@@ -154,7 +154,6 @@ const ParallelAdderResult = struct {
     summed_number: u36,
     carry_out: u1,
 
-    //------------------- METHODS -----------------------------------------------
     pub fn format(
         self: @This(),
         writer: *std.Io.Writer,

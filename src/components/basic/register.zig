@@ -1,99 +1,105 @@
-//! This file declares all possible types of registers.
-//! Registers are distinguished mainly by their size (i.e. number of bits).
-//! Usually, different sizes means different usages.
+//! Defines various types of sequential circuits, i.e. components capable of holding data over time.
+//! Each class of registers distinguish themself by the size they can store, which
+//! usually maps to different usanges within the computer's architecture.
 
 const std = @import("std");
 
-// ---------------------------------- REGISTER TYPES DEFINITIONS ----------------------------------------------------
+/// Defines the possible types of registers available.
+/// Each class is associated to a specific usage (described shortly after)
+/// and a specific data size (in bits).
+///
+/// The available members are:
+/// - Address registers:  15-bit registers used to hold a memory address.
+/// - World registers: 36-bit registers used to hold a memory word. These registers are mainly used for arithmetic operations and keeping data.
+/// - Flag registers: 1-bit registers used to keep track of useful properties detectable after an operation occurred (e.g. the overflow in an arithmetic operation).
+/// - Parametric registers: 6-bit registers used for keeping a relative address to a parametric cell (i.e. its index and parametric group).
+/// - Micro-operation register: a 8-bit register used to keep micro-operation code currently executed.
+/// Note that each entry has associated as its value the width of the data they can store.
+pub const RegisterT = enum(u8) {
+    flag_t = 1,
+    parametric_t = 6,
+    micro_operation_t = 8,
+    address_t = 15,
+    word_t = 36,
 
-/// Defines the usage of the register.
-/// This is tied also to the size.
-pub const register_t = enum {
-    /// Address registers are 15-bits registers, large enough to hold a memory address.
-    /// These registers are used to keep useful memory location used during the current execution
-    /// of the program.
-    address,
-
-    /// Word registers are 36-bits registers, large enough to keep an entire memory word.
-    /// These registers are used for applying arithmetic operations or keeping data
-    word,
-
-    /// Flag registers are 1-bit registers, used for checking useful properties
-    /// after an operation (e.g. the overflow after an arithmetic operation).
-    flag,
-
-    /// Parametric registers are 6-bit registers used for keeping the relative addresses of the
-    /// current instruction.
-    parametric,
-
-    /// The O micro-operation register is a 8-bit register used to keep the address of the
-    /// operation-code of the current micro-instruction being executed.
-    micro_operation,
-
-    // ---------------------------------- REGISTER SIZES CONSTANTS -----------------------------------
-    const address_reg_size = u15;
-
-    const word_reg_size = u36;
-
-    const flag_reg_size = u1;
-
-    const param_reg_size = u6;
-
-    const micro_op_reg_size = u8;
-
-    // ----------------------------------- METHODS -----------------------------------------------------
-
-    /// Returns the type of the content of the register type.
-    pub fn size_from_type(self: register_t) address_reg_size!word_reg_size!flag_reg_size!param_reg_size!micro_op_reg_size {
-        const result: address_reg_size!word_reg_size!flag_reg_size!param_reg_size!micro_op_reg_size =
-            switch (self) {
-                register_t.address => address_reg_size,
-                register_t.word => word_reg_size,
-                register_t.flag => flag_reg_size,
-                register_t.parametric => param_reg_size,
-                register_t.micro_operation => micro_op_reg_size,
-            };
-
-        return result;
-    }
-
-    /// Returns a description of the type, specifying its usage and size.
-    pub fn string_from_type(self: register_t) []u8 {
-        const result: []u8 = switch (self) {
-            register_t.address => "Address Register (15-bits)",
-            register_t.word => "World Register (8-bits)",
-            register_t.flag => "Flag Register (1-bit)",
-            register_t.parametric => "Parametric Register (6-bits)",
-            register_t.micro_operation => "Micro-Operation Register (8-bits)",
+    pub fn format(
+        self: @This(),
+        writer: *std.Io.Writer,
+    ) !void {
+        const name_type = switch (self) {
+            RegisterT.address_t => "Address Register",
+            RegisterT.word_t => "World Register",
+            RegisterT.flag_t => "Flag Register",
+            RegisterT.parametric_t => "Parametric Register",
+            RegisterT.micro_operation_t => "Micro-Operation Register",
         };
-        return result;
+        writer.print("{s}[{d}-bit(s)]", .{ name_type, @intFromEnum(self) });
     }
 };
-// ---------------------------------------------------------------------------------------------------------------------
 
-/// A register is a low-level component able to hold static data during execution.
-/// The size of the data which is able to store depends on the type of the register.
-/// Registers are distinguished by their name, which is typically a single UTF-8 letter.
+/// A sequential circuit capable of keeping data of a certain size consistently.
+/// - `name`: the character identifying the instance.
+/// - `type`: it determines the purpose of the register within the computer architecture.
+/// - `data`: the actual content, represented as an integer number whose size is determined by the type of register instantieted.
 pub const Register = struct {
-    content: union(register_t) {
-        address: register_t.address_reg_size,
-        word: register_t.word_reg_size,
-        flag: register_t.flag_reg_size,
-        param: register_t.param_reg_size,
-        micro_op: register_t.micro_op_reg_size,
-    } = 0,
-    type: register_t = undefined,
+    // The data in managed internally as a tagged union to
+    // better show the connection between register type and
+    // its size.
+    const DataT = union(RegisterT) {
+        flag_t: u1,
+        parametric_t: u6,
+        micro_operation_t: u8,
+        address_t: u15,
+        word_t: u36,
+    };
     name: u8 = undefined,
+    type: RegisterT = undefined,
+    data: DataT,
 
-    // ------------------------ METHODS ------------------------------------------------------
-    /// Prints to `writer` all informations about the register.
+    /// Returns an initialized Register circuit, whose data
+    /// (which integer type is determined by the register type) is set to zero.
+    /// It is adviced to call this function when one wants to construct an instance.
+    /// - `name`: the character identifying the instance.
+    /// - `type`: it describes the use-case of the instance.
+    pub fn init(name: u8, reg_type: RegisterT) @This() {
+        const data: DataT = switch (reg_type) {
+            RegisterT.flag_t => DataT{ .flag_t = 0 },
+            RegisterT.parametric_t => DataT{ .parametric_t = 0 },
+            RegisterT.micro_operation_t => DataT{ .micro_operation_t = 0 },
+            RegisterT.address_t => DataT{ .address_t = 0 },
+            RegisterT.word_t => DataT{ .word_t = 0 },
+        };
+
+        const register: Register = Register{
+            .name = name,
+            .type = reg_type,
+            .data = data,
+        };
+        return register;
+    }
+
+    /// Put the passed value as the new content, only if its size is within the instance type.
+    /// - `new_val`: the new number being copied into.
+    pub fn set_data(self: *@This(), new_val: u36) !void {
+
+        // The switch on the tagged union forces to check that the new value
+        // can be converted into the data's size limits without any loss of information.
+        switch (self.type) {
+            RegisterT.flag_t => |*value| value.* = @truncate(new_val),
+            RegisterT.parametric_t => |*value| value.* = @truncate(new_val),
+            RegisterT.micro_operation_t => |*value| value.* = @truncate(new_val),
+            RegisterT.address_t => |*value| value.* = @truncate(new_val),
+            RegisterT.word_t => |*value| value.* = @truncate(new_val),
+        }
+    }
+
     pub fn format(self: Register, writer: *std.io.Writer) !void {
-        const reg_description: []u8 = register_t.string_from_type(self.type);
-        try writer.print("|{s}|({s}) = {d}\t{b}", .{ self.name, reg_description, self.content, self.content });
+        const reg_description: []u8 = RegisterT.string_from_type(self.type);
+        try writer.print("|{s}|({s}) = {d}\t{b}", .{ self.name, reg_description, self.data, self.data });
     }
 
-    /// Zeros the register content
-    pub fn zero_register(self: Register) void {
-        self.content = 0;
+    /// Updates the instance by setting its content to zero.
+    pub fn clear_data(self: Register) void {
+        self.data = 0;
     }
-}; // --------------------------------------------------------------------------------------------------------------------
+};
