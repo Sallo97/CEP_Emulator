@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // ----------------------------- TEST MODULE DEFINITIONS -----------------------------
-    const test_adder_module = b.addModule(
+    const adder_tests_module = b.addModule(
         // Name of the module
         "adder_tests",
         // Options
@@ -54,7 +54,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .imports = &.{.{ .name = "CEP_basic_circuits", .module = basic_circuits_module }},
         });
-    const adder_tests = b.addTest(.{ .root_module = test_adder_module });
+    const adder_tests = b.addTest(.{ .root_module = adder_tests_module });
     const run_mod_tests = b.addRunArtifact(adder_tests);
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
