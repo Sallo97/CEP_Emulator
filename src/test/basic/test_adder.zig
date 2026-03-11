@@ -64,11 +64,11 @@ test "full_adder_sum" {
 fn check_parallel_adder_sum(fst_operand: u36, snd_operand: u36, exp_sum: u36, exp_carry_out: u1) bool {
     var dummy_parallel_adder: ParallelAdder = ParallelAdder.init("??");
 
-    dummy_parallel_adder.set_numbers(fst_operand, snd_operand);
-    const result = dummy_parallel_adder.execute_add();
+    dummy_parallel_adder.set_operands(fst_operand, snd_operand);
+    const result = dummy_parallel_adder.perform_sum();
 
-    const sum_eql: bool = result.sum_number == exp_sum;
-    const carry_out_eql: bool = result.carry_output == exp_carry_out;
+    const sum_eql: bool = result.summed_number == exp_sum;
+    const carry_out_eql: bool = result.carry_out == exp_carry_out;
     return sum_eql and carry_out_eql;
 }
 

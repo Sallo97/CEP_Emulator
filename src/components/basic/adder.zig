@@ -89,7 +89,7 @@ pub const ParallelAdder = struct {
     /// Returns the outcome of the sum between the 36-bits integers currently hold by the circuit.
     pub fn perform_sum(self: *@This()) ParallelAdderResult {
         var summed_number: u36 = 0;
-        const final_carry: u1 = undefined;
+        var final_carry: u1 = undefined;
 
         // Sums each digits from less significant to most significant.
         // The resulting bit is stored in the correct i-th position of
