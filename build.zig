@@ -7,11 +7,11 @@ pub fn build(b: *std.Build) void {
     // const optimize = b.standardOptimizeOption(.{});
 
     // ------------------------------ BASIC CIRCUITS MODULE --------------------------------
-    const basic_circuits_module = b.addModule(
+    const simple_circuits_module = b.addModule(
         // Name of the module
-        "CEP_basic_circuits",
+        "CEP_simple_circuits",
         // Options
-        .{ .root_source_file = b.path("src/components/basic/root_basic.zig"), .target = target });
+        .{ .root_source_file = b.path("src/components/simple_circuits/root.zig"), .target = target });
 
     // ------------------------- MAIN MODULE DEFINITIONS ------------------------------
 
@@ -45,17 +45,19 @@ pub fn build(b: *std.Build) void {
     }
 
     // ----------------------------- TEST MODULE DEFINITIONS -----------------------------
-    const adder_tests_module = b.addModule(
+    const simple_circuits_tests_module = b.addModule(
         // Name of the module
-        "adder_tests",
+        "simple_circuits_tests",
         // Options
         .{
-            .root_source_file = b.path("src/test/basic/test_adder.zig"),
+            .root_source_file = b.path("src/components/simple_circuits/root.zig"),
             .target = target,
-            .imports = &.{.{ .name = "CEP_basic_circuits", .module = basic_circuits_module }},
+            .imports = &.{.{ .name = "CEP_basic_circuits", .module = simple_circuits_module }},
         });
-    const adder_tests = b.addTest(.{ .root_module = adder_tests_module });
-    const run_mod_tests = b.addRunArtifact(adder_tests);
+    const simple_circuit_tests = b.addTest(.{ .root_module = simple_circuits_tests_module });
+
+    const run_adder_mod_tests = b.addRunArtifact(simple_circuit_tests);
+
     const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_mod_tests.step);
+    test_step.dependOn(&run_adder_mod_tests.step);
 }
