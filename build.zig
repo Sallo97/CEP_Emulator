@@ -52,12 +52,19 @@ pub fn build(b: *std.Build) void {
         .{
             .root_source_file = b.path("src/components/simple_circuits/root.zig"),
             .target = target,
-            .imports = &.{.{ .name = "CEP_basic_circuits", .module = simple_circuits_module }},
+            .imports = &.{.{ .name = "CEP_simple_circuits", .module = simple_circuits_module }},
         });
     const simple_circuit_tests = b.addTest(.{ .root_module = simple_circuits_tests_module });
+    const run_simple_circuits_mod_tests = b.addRunArtifact(simple_circuit_tests);
+    const test_simple_circuits_step = b.step("simple_circuits_test", "Run tests");
+    test_simple_circuits_step.dependOn(&run_simple_circuits_mod_tests.step);
 
-    const run_adder_mod_tests = b.addRunArtifact(simple_circuit_tests);
-
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_adder_mod_tests.step);
+    const middle_componets_tests_module = b.addModule("middle_components_tests", .{
+        .root_source_file = b.path("src/components/root.zig"),
+        .target = target,
+    });
+    const middle_components_tests = b.addTest(.{ .root_module = middle_componets_tests_module });
+    const run_middle_components_mod_tests = b.addRunArtifact(middle_components_tests);
+    const test_middle_components_step = b.step("middle_components_test", "Run tests");
+    test_middle_components_step.dependOn(&run_middle_components_mod_tests.step);
 }

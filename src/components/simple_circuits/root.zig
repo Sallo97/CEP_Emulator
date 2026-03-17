@@ -2,8 +2,8 @@
 //! It calls also all the tests.
 
 const std = @import("std");
-pub const adder_f = @import("adder.zig");
-pub const register_f = @import("register.zig");
+pub const adderF = @import("adder.zig");
+pub const registerF = @import("register.zig");
 
 test {
     std.testing.refAllDecls(@This());

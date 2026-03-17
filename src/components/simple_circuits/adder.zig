@@ -19,7 +19,7 @@ pub const FullAdder = struct {
     carry_in: u1 = 0,
 
     /// Returns the outcome of the sum between the bits currently hold by the circuit.
-    pub fn perform_sum(self: @This()) FullAdderResult {
+    pub fn performSum(self: @This()) FullAdderResult {
         const sum: u2 = @as(u2, self.fst_bit) + @as(u2, self.snd_bit) + @as(u2, self.carry_in);
         const adder_res: FullAdderResult = .{
             .sum_bit = @truncate(sum),
@@ -76,19 +76,37 @@ pub const ParallelAdder = struct {
         return adder;
     }
 
-    /// This function updates the instance by setting the two new number operands, handling
+    /// Updates the instance by setting the two new number operands, handling
     /// their distribution among the full adder members.
     /// - `fst_number`: the new value of the first operand.
     /// - `snd_number`: the new value of the second operand.
-    pub fn set_operands(self: *@This(), fst_num: u36, snd_num: u36) void {
+    pub fn setOperands(self: *@This(), fst_num: u36, snd_num: u36) void {
         for (0..36) |idx| {
             self.full_adders_array[idx].fst_bit = @truncate(fst_num >> @truncate(idx));
             self.full_adders_array[idx].snd_bit = @truncate(snd_num >> @truncate(idx));
         }
     }
 
+    /// Updates the instance by setting the first number operand, handling its distribution
+    /// among the full adder members.
+    /// - `new_val`: the new value of the first operand.
+    pub fn setFstOperand(self: *@This(), new_val: u36) void {
+        for (0..36) |idx| {
+            self.full_adders_array[idx].fst_bit = @truncate(new_val >> @truncate(idx));
+        }
+    }
+
+    /// Updates the instance by seting the second number operand, handling its distribution
+    /// among the full adder members.
+    /// - `new_val`: the new value of the second operand.
+    pub fn setSndOperand(self: *@This(), new_val: u36) void {
+        for (0..36) |idx| {
+            self.full_adders_array[idx].snd_bit = @truncate(new_val >> @truncate(idx));
+        }
+    }
+
     /// Returns the outcome of the sum between the 36-bits integers currently hold by the circuit.
-    pub fn perform_sum(self: *@This()) ParallelAdderResult {
+    pub fn performSum(self: *@This()) ParallelAdderResult {
         var summed_number: u36 = 0;
         var final_carry: u1 = undefined;
 
@@ -100,7 +118,7 @@ pub const ParallelAdder = struct {
         // copied into `final_carry`.
         for (0..36) |i| {
             const addr: FullAdder = self.full_adders_array[i];
-            const res = addr.perform_sum();
+            const res = addr.performSum();
 
             summed_number = summed_number | (@as(u36, res.sum_bit) << @truncate(i));
             if (i != 35) {
@@ -120,7 +138,7 @@ pub const ParallelAdder = struct {
     /// Debug function used by `format`. It reconstruct the two operands
     /// whose digits are distributed among the full adder array.
     /// The retrieved numbers are returned in a ordered tuple.
-    fn get_operands(self: @This()) (struct { u36, u36 }) {
+    fn getOperands(self: @This()) (struct { u36, u36 }) {
         var fst_number: u36 = 0;
         var snd_number: u36 = 0;
 
@@ -136,15 +154,20 @@ pub const ParallelAdder = struct {
         return result;
     }
 
+    /// Clears the operands of the parallel adder
+    pub fn clearAdder(self: *@This()) void {
+        self.setOperands(0, 0);
+    }
+
     pub fn format(
         self: @This(),
         writer: *std.Io.Writer,
     ) !void {
-        const pair = self.get_operands();
+        const pair = self.getOperands();
         const fst_number = pair.@"0";
         const snd_number = pair.@"1";
 
-        try writer.print("[{s}] = fst_number = {d}({b:.36})\tsnd_number = {d}({b:.36})", .{ self.name, fst_number, fst_number, snd_number, snd_number });
+        try writer.print("[{s}] = fst_number = {b}\tsnd_number = {b}", .{ self.name, fst_number, snd_number });
     }
 };
 
@@ -159,7 +182,7 @@ const ParallelAdderResult = struct {
         self: @This(),
         writer: *std.Io.Writer,
     ) !void {
-        try writer.print("sum_number = {d}({b})\tcarry_output = {b}", .{ self.summed_number, self.summed_number, self.carry_out });
+        try writer.print("sum_number = {b}\tcarry_output = {b}", .{ self.summed_number, self.carry_out });
     }
 };
 
@@ -174,13 +197,13 @@ const ParallelAdderResult = struct {
 /// - `carry_in`: the 1-bit value of the input overflow value.
 /// - `exp_sum`: the expected resulting 1-bit sum.
 /// - `exp_carry_out`: the expected 1-bit output overflow value.
-fn check_full_adder_sum(fst_operand: u1, snd_operand: u1, carry_in: u1, exp_sum: u1, exp_carry_out: u1) bool {
+fn checkFullAdderSum(fst_operand: u1, snd_operand: u1, carry_in: u1, exp_sum: u1, exp_carry_out: u1) bool {
     const dummy_full_adder: FullAdder = .{
         .fst_bit = fst_operand,
         .snd_bit = snd_operand,
         .carry_in = carry_in,
     };
-    const result = dummy_full_adder.perform_sum();
+    const result = dummy_full_adder.performSum();
     const sum_eql: bool = result.sum_bit == exp_sum;
     const carry_out_eql: bool = result.carry_out == exp_carry_out;
     return sum_eql and carry_out_eql;
@@ -198,14 +221,14 @@ fn check_full_adder_sum(fst_operand: u1, snd_operand: u1, carry_in: u1, exp_sum:
 // 7 | 1         | 1          | 0           | 0   | 1            |
 // 8 | 1         | 1          | 1           | 1   | 1            |
 test "full_adder_sum" {
-    try expect(check_full_adder_sum(0, 0, 0, 0, 0));
-    try expect(check_full_adder_sum(0, 0, 1, 1, 0));
-    try expect(check_full_adder_sum(1, 0, 0, 1, 0));
-    try expect(check_full_adder_sum(1, 0, 1, 0, 1));
-    try expect(check_full_adder_sum(0, 1, 0, 1, 0));
-    try expect(check_full_adder_sum(0, 1, 1, 0, 1));
-    try expect(check_full_adder_sum(1, 1, 0, 0, 1));
-    try expect(check_full_adder_sum(1, 1, 1, 1, 1));
+    try expect(checkFullAdderSum(0, 0, 0, 0, 0));
+    try expect(checkFullAdderSum(0, 0, 1, 1, 0));
+    try expect(checkFullAdderSum(1, 0, 0, 1, 0));
+    try expect(checkFullAdderSum(1, 0, 1, 0, 1));
+    try expect(checkFullAdderSum(0, 1, 0, 1, 0));
+    try expect(checkFullAdderSum(0, 1, 1, 0, 1));
+    try expect(checkFullAdderSum(1, 1, 0, 0, 1));
+    try expect(checkFullAdderSum(1, 1, 1, 1, 1));
 }
 
 /// Returns if a parallel adder applies the requested addition correctly, i.e.
@@ -219,11 +242,11 @@ test "full_adder_sum" {
 /// - `snd_number`: the 36-bit value of the second operand.
 /// - `exp_sum`: the expected resulting 36-bit sum.
 /// - `exp_carry_out`: the expected 1-bit output overflow value.
-fn check_parallel_adder_sum(fst_operand: u36, snd_operand: u36, exp_sum: u36, exp_carry_out: u1) bool {
+fn checkParallelAdderSum(fst_operand: u36, snd_operand: u36, exp_sum: u36, exp_carry_out: u1) bool {
     var dummy_parallel_adder: ParallelAdder = ParallelAdder.init("??");
 
-    dummy_parallel_adder.set_operands(fst_operand, snd_operand);
-    const result = dummy_parallel_adder.perform_sum();
+    dummy_parallel_adder.setOperands(fst_operand, snd_operand);
+    const result = dummy_parallel_adder.performSum();
 
     const sum_eql: bool = result.summed_number == exp_sum;
     const carry_out_eql: bool = result.carry_out == exp_carry_out;
@@ -237,7 +260,7 @@ fn check_parallel_adder_sum(fst_operand: u36, snd_operand: u36, exp_sum: u36, ex
 // 2 | 25         | 36          | 61  | 0            |
 // 3 | 111111...1 | 1           | 0   | 1            |
 test "parallel_adder_sum" {
-    try expect(check_parallel_adder_sum(0, 0, 0, 0));
-    try expect(check_parallel_adder_sum(25, 36, 61, 0));
-    try expect(check_parallel_adder_sum(0b111111111111111111111111111111111111, 0b1, 0, 1));
+    try expect(checkParallelAdderSum(0, 0, 0, 0));
+    try expect(checkParallelAdderSum(25, 36, 61, 0));
+    try expect(checkParallelAdderSum(0b111111111111111111111111111111111111, 0b1, 0, 1));
 }
