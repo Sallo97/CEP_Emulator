@@ -124,7 +124,7 @@ const AddressUnit = struct {
                 break :h1_block h1_abs_addr.summed_number;
             },
         };
-        return abs_addr;
+        return @truncate(abs_addr);
     }
 
     /// Sets all registers of the instance to zero.
@@ -161,7 +161,7 @@ test "get_parametric_address" {
     try dummy_address_unit.r_reg.checkAndSetData(0b000_001_000_110_000);
 
     const p_exp_addr: u15 = 0b000_111_000_000_000 + 0b01000;
-    const p_abs_addr: u15 = dummy_address_unit.getAbsParamAddr(ParametricCellT.P);
+    const p_abs_addr: u15 = dummy_address_unit.computeAbsParamAddr(ParametricCellT.P);
     try expectEqual(p_exp_addr, p_abs_addr);
 
     const q_exp_addr: u15 = 0b000_000_101_000_000 + 0b10000;
