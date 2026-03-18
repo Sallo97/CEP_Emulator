@@ -30,7 +30,6 @@ pub const Register = struct {
     /// Note that each entry has associated as its value the width of the data they can store.
     pub const RegisterT = enum(u8) {
         flag_t = 1,
-        parametric_t = 6,
         micro_operation_t = 8,
         address_t = 15,
         word_t = 36,
@@ -43,7 +42,6 @@ pub const Register = struct {
                 .address_t => "Address Register",
                 .word_t => "World Register",
                 .flag_t => "Flag Register",
-                .parametric_t => "Parametric Register",
                 .micro_operation_t => "Micro-Operation Register",
             };
             try writer.print("{s}[{d}-bit(s)]", .{ name_type, @intFromEnum(self) });
@@ -56,7 +54,6 @@ pub const Register = struct {
     // its size.
     const DataT = union(RegisterT) {
         flag_t: u1,
-        parametric_t: u6,
         micro_operation_t: u8,
         address_t: u15,
         word_t: u36,
@@ -65,7 +62,6 @@ pub const Register = struct {
         pub fn get_type(self: @This()) RegisterT {
             const data_type: RegisterT = switch (self) {
                 RegisterT.flag_t => comptime RegisterT.flag_t,
-                RegisterT.parametric_t => comptime RegisterT.parametric_t,
                 RegisterT.micro_operation_t => comptime RegisterT.micro_operation_t,
                 RegisterT.address_t => comptime RegisterT.address_t,
                 RegisterT.word_t => comptime RegisterT.word_t,
@@ -73,7 +69,7 @@ pub const Register = struct {
             return data_type;
         }
     };
-    name: u8,
+    name: []u8,
     data: DataT,
 
     /// Returns an initialized Register circuit, whose data
@@ -81,10 +77,9 @@ pub const Register = struct {
     /// It is adviced to call this function when one wants to construct an instance.
     /// - `name`: the character identifying the instance.
     /// -`type`: it describes the use-case of the instance.
-    pub fn init(name: u8, reg_type: RegisterT) @This() {
+    pub fn init(name: []u8, reg_type: RegisterT) @This() {
         const data: DataT = switch (reg_type) {
             RegisterT.flag_t => DataT{ .flag_t = 0 },
-            RegisterT.parametric_t => DataT{ .parametric_t = 0 },
             RegisterT.micro_operation_t => DataT{ .micro_operation_t = 0 },
             RegisterT.address_t => DataT{ .address_t = 0 },
             RegisterT.word_t => DataT{ .word_t = 0 },
@@ -103,7 +98,6 @@ pub const Register = struct {
     pub fn convertAndGetData(self: @This()) u36 {
         const data: u36 = switch (self.data) {
             RegisterT.flag_t => |raw_value| raw_value,
-            RegisterT.parametric_t => |raw_value| raw_value,
             RegisterT.micro_operation_t => |raw_value| raw_value,
             RegisterT.address_t => |raw_value| raw_value,
             RegisterT.word_t => |raw_value| raw_value,
@@ -141,7 +135,6 @@ pub const Register = struct {
 
         switch (self.data) {
             RegisterT.flag_t => |*raw_data| raw_data.* = @intCast(new_val),
-            RegisterT.parametric_t => |*raw_data| raw_data.* = @intCast(new_val),
             RegisterT.micro_operation_t => |*raw_data| raw_data.* = @intCast(new_val),
             RegisterT.address_t => |*raw_data| raw_data.* = @intCast(new_val),
             RegisterT.word_t => |*raw_data| raw_data.* = @intCast(new_val),
@@ -174,7 +167,7 @@ var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
 const stderr = &stderr_writer.interface;
 
 test "register_initialization" {
-    var dummy_register: Register = Register.init('F', Register.RegisterT.flag_t);
+    var dummy_register: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
     // try dummy_register.format(stderr);
     // try stderr.print("\n", .{});
     // try stderr.flush();
@@ -183,7 +176,7 @@ test "register_initialization" {
 }
 
 test "register_set_value" {
-    var dummy_register: Register = Register.init('F', Register.RegisterT.flag_t);
+    var dummy_register: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
     try dummy_register.checkAndSetData(1);
     // try dummy_register.format(stderr);
     // try stderr.print("\n", .{});
@@ -196,7 +189,7 @@ test "register_set_value" {
     //try std.testing.expectError(RegisterError.OutOfRange, error_got);
 
     // Re-declaring the register with a diffent type.
-    dummy_register = Register.init('A', Register.RegisterT.address_t);
+    dummy_register = Register.init(@constCast("A"), Register.RegisterT.address_t);
     // try dummy_register.format(stderr);
     // try stderr.print("\n", .{});
     // try stderr.flush();
@@ -211,7 +204,7 @@ test "register_set_value" {
 }
 
 test "register_clearing" {
-    var dummy_register: Register = Register.init('F', Register.RegisterT.flag_t);
+    var dummy_register: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
 
     try dummy_register.clearData();
     // try dummy_register.format(stderr);

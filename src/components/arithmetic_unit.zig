@@ -10,7 +10,7 @@ const ParallelAdder = @import("simple_circuits/adder.zig").ParallelAdder;
 /// Defines the kind of operation requested to the Arithmetic Unit by the CPU.
 const OperationT = enum {
     CopyT,
-    NegationT,
+    NotT,
     AdditionT,
 };
 
@@ -24,6 +24,7 @@ const OperandT = enum {
 
 /// A circuit specialized in implementing arithmetic computations.
 /// The unit supports both fixed point and floating point arithmetics.
+///
 /// Its main components are:
 /// - two 36-bits registers `A` and `B`, used as accumulators.
 /// - register `C`, used for storing the memory address of the current operand
@@ -39,21 +40,14 @@ const OperandT = enum {
 const ArithmeticUnit = struct {
     const name = "Arithmetic Unit";
 
-    a_reg: Register = Register.init('A', Register.RegisterT.word_t),
-    b_reg: Register = Register.init('B', Register.RegisterT.word_t),
-    c_reg: Register = Register.init('C', Register.RegisterT.address_t),
+    a_reg: Register = Register.init(@constCast("A"), Register.RegisterT.word_t),
+    b_reg: Register = Register.init(@constCast("B"), Register.RegisterT.word_t),
+    c_reg: Register = Register.init(@constCast("C"), Register.RegisterT.word_t),
     ad_add: ParallelAdder = ParallelAdder.init("AD"),
 
-    z_reg: Register = Register.init('Z', Register.RegisterT.word_t),
+    z_reg: Register = Register.init(@constCast("Z"), Register.RegisterT.word_t),
 
-    g_reg: Register = Register.init('G', Register.RegisterT.flag_t),
-
-    /// Initializes an Arithmetic Unit, having all of its registers set to zero.
-    /// It is adviced to construct an instance through this method instead of manually.
-    pub fn init() ArithmeticUnit {
-        const arithmetic_unit: ArithmeticUnit = .{};
-        return arithmetic_unit;
-    }
+    g_reg: Register = Register.init(@constCast("G"), Register.RegisterT.flag_t),
 
     /// Apply the requested operation.
     /// Invokes ArithmeticUnitError if something went wrong.
@@ -73,34 +67,23 @@ const ArithmeticUnit = struct {
                 // The source register's content is simply
                 // copied and set as the new value of the
                 // destination register.
-                //
-                // This operation never causes an overflow.
                 assert(operands_ptr_list.items.len == 2);
                 const src_reg_ptr: *Register = operands_ptr_list.items[0];
                 const dst_reg_ptr: *Register = operands_ptr_list.items[1];
 
                 try dst_reg_ptr.checkAndSetData(src_reg_ptr.convertAndGetData());
             },
-            .NegationT => {
-                // A negation operation has always just one operand.
+            .NotT => {
+                // A not operation has always just one operand.
                 //
-                // The negation is implemented in-hardware by summing
-                // the number with 100...000 (i.e. a word having only the
-                // most significant bit set to one).
-                //
-                // This operation can cause an overflow: when the number is
-                // negative, the addition with 100...000 will cause the
-                // carry-out to be set to one.
+                // The not simply returns the complement of the input, i.e. each
+                // bit is set to the opposite one.
                 assert(operands_ptr_list.items.len == 1);
-                const to_negate_reg_ptr: *Register = operands_ptr_list.items[0];
-                const init_value: u36 = to_negate_reg_ptr.convertAndGetData();
-                const negation_operand: u36 = 0b100000000000000000000000000000000000;
 
-                self.ad_add.setOperands(negation_operand, init_value);
-                const final_value = self.ad_add.performSum();
+                const src_reg_ptr: *Register = operands_ptr_list.items[0];
+                const negated_value = ~(src_reg_ptr.convertAndGetData());
 
-                try to_negate_reg_ptr.checkAndSetData(final_value.summed_number);
-                try self.g_reg.checkAndSetData(final_value.carry_out);
+                try src_reg_ptr.checkAndSetData(negated_value);
             },
             .AdditionT => {
                 // The addition operation has always three operands:
@@ -110,9 +93,6 @@ const ArithmeticUnit = struct {
                 // The sum is implemented by passing the source registers'
                 // content to the parallel adder and setting the destination
                 // register and flag register `G` to the result of the addition.
-                //
-                // This operation can cause an overflow when the result of the
-                // addition exceeds 36-bits.
                 assert(operands_ptr_list.items.len == 3);
                 const fst_operand_reg_ptr = operands_ptr_list.items[0];
                 const snd_operand_reg_ptr = operands_ptr_list.items[1];
@@ -122,7 +102,6 @@ const ArithmeticUnit = struct {
                 const sum_result = self.ad_add.performSum();
 
                 try return_reg_ptr.checkAndSetData(sum_result.summed_number);
-                try self.g_reg.checkAndSetData(sum_result.carry_out);
             },
         }
     }
@@ -183,13 +162,13 @@ var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
 const stderr = &stderr_writer.interface;
 
 test "init" {
-    const dummy_arithmetic_unit = ArithmeticUnit.init();
+    const dummy_arithmetic_unit = ArithmeticUnit{};
     _ = dummy_arithmetic_unit;
     // try dummy_arithmetic_unit.format(stderr);
 }
 
 test "get_operand" {
-    var dummy_arithmetic_unit = ArithmeticUnit.init();
+    var dummy_arithmetic_unit = ArithmeticUnit{};
     const dummy_allocator = std.testing.allocator;
     const operands = [_]OperandT{ .A, .B, .C, .Z, .A, .B, .C, .C };
     var operands_ptr_list: std.ArrayList(*Register) = dummy_arithmetic_unit.getOperandPtrArray(dummy_allocator, @constCast(&operands));
@@ -207,7 +186,7 @@ test "get_operand" {
 }
 
 test "copy_operation" {
-    var dummy_arithmetic_unit = ArithmeticUnit.init();
+    var dummy_arithmetic_unit = ArithmeticUnit{};
     try dummy_arithmetic_unit.a_reg.checkAndSetData(0b100);
     const operands = [_]OperandT{ .A, .Z };
     try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.CopyT, @constCast(&operands));
@@ -215,24 +194,17 @@ test "copy_operation" {
     try expectEqual(4, dummy_arithmetic_unit.z_reg.convertAndGetData());
 }
 
-test "negation_operation" {
-    var dummy_arithmetic_unit = ArithmeticUnit.init();
+test "not_operation" {
+    var dummy_arithmetic_unit = ArithmeticUnit{};
     try dummy_arithmetic_unit.z_reg.checkAndSetData(0b000000000000000000000000000000000100);
     const operands = [_]OperandT{.Z};
-    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.NegationT, @constCast(&operands));
+    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.NotT, @constCast(&operands));
 
-    try expectEqual(0b100000000000000000000000000000000100, dummy_arithmetic_unit.z_reg.convertAndGetData());
-    try expectEqual(0b0, dummy_arithmetic_unit.g_reg.convertAndGetData());
-
-    try dummy_arithmetic_unit.z_reg.checkAndSetData(0b100000000000000000000000000000000100);
-    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.NegationT, @constCast(&operands));
-
-    try expectEqual(0b000000000000000000000000000000000100, dummy_arithmetic_unit.z_reg.convertAndGetData());
-    try expectEqual(0b1, dummy_arithmetic_unit.g_reg.convertAndGetData());
+    try expectEqual(0b111111111111111111111111111111111011, dummy_arithmetic_unit.z_reg.convertAndGetData());
 }
 
 test "integer_sum_operation" {
-    var dummy_arithmetic_unit = ArithmeticUnit.init();
+    var dummy_arithmetic_unit = ArithmeticUnit{};
     try dummy_arithmetic_unit.a_reg.checkAndSetData(0b10);
     try dummy_arithmetic_unit.z_reg.checkAndSetData(0b11);
     var operands = [_]OperandT{ .A, .Z, .A };
@@ -246,5 +218,4 @@ test "integer_sum_operation" {
     operands = [_]OperandT{ .A, .B, .Z };
     try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.AdditionT, @constCast(&operands));
     try expectEqual(0b0, dummy_arithmetic_unit.z_reg.convertAndGetData());
-    try expectEqual(0b1, dummy_arithmetic_unit.g_reg.convertAndGetData());
 }

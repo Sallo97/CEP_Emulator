@@ -3,6 +3,7 @@
 
 const std = @import("std");
 pub const arithmetic_unit_f = @import("arithmetic_unit.zig");
+pub const address_unit_f = @import("address_unit.zig");
 
 test {
     std.testing.refAllDecls(@This());
