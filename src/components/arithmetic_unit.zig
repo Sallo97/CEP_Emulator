@@ -196,6 +196,14 @@ test "get_operand" {
     defer operands_ptr_list.deinit(dummy_allocator);
 
     try expectEqual(8, operands_ptr_list.items.len);
+    try expectEqual(&dummy_arithmetic_unit.a_reg, operands_ptr_list.items[0]);
+    try expectEqual(&dummy_arithmetic_unit.b_reg, operands_ptr_list.items[1]);
+    try expectEqual(&dummy_arithmetic_unit.c_reg, operands_ptr_list.items[2]);
+    try expectEqual(&dummy_arithmetic_unit.z_reg, operands_ptr_list.items[3]);
+    try expectEqual(&dummy_arithmetic_unit.a_reg, operands_ptr_list.items[4]);
+    try expectEqual(&dummy_arithmetic_unit.b_reg, operands_ptr_list.items[5]);
+    try expectEqual(&dummy_arithmetic_unit.c_reg, operands_ptr_list.items[6]);
+    try expectEqual(&dummy_arithmetic_unit.c_reg, operands_ptr_list.items[7]);
 }
 
 test "copy_operation" {
