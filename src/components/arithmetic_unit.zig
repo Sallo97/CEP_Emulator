@@ -37,7 +37,7 @@ const OperandT = enum {
 ///
 /// The instruction list defines the flag register `G` for holding the overflow bit of an arithmetic instruction.
 /// It is not specified where it resides, so we assume it is inside the arithmetic unit.
-const ArithmeticUnit = struct {
+pub const ArithmeticUnit = struct {
     const name = "Arithmetic Unit";
 
     a_reg: Register = Register.init(@constCast("A"), Register.RegisterT.word_t),
@@ -161,13 +161,11 @@ var stderr_buffer: [1024]u8 = undefined;
 var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
 const stderr = &stderr_writer.interface;
 
-test "init" {
-    const dummy_arithmetic_unit = ArithmeticUnit{};
-    _ = dummy_arithmetic_unit;
-    // try dummy_arithmetic_unit.format(stderr);
-}
+//----------------------------------------------------- TESTS ------------------------------------------------------
 
 test "get_operand" {
+    // Create an array of enum operands [A, B, C, Z, A, B, C, C ] and check if
+    // `getOperandPtrArray returns the associated list of register pointers.
     var dummy_arithmetic_unit = ArithmeticUnit{};
     const dummy_allocator = std.testing.allocator;
     const operands = [_]OperandT{ .A, .B, .C, .Z, .A, .B, .C, .C };
@@ -186,6 +184,8 @@ test "get_operand" {
 }
 
 test "copy_operation" {
+    // Request to the arithmetic unit to copy the content of
+    // register `A` into register `Z`.
     var dummy_arithmetic_unit = ArithmeticUnit{};
     try dummy_arithmetic_unit.a_reg.checkAndSetData(0b100);
     const operands = [_]OperandT{ .A, .Z };
@@ -195,6 +195,8 @@ test "copy_operation" {
 }
 
 test "not_operation" {
+    // Request to the arithmetic unit to negate the content of
+    // register `Z`.
     var dummy_arithmetic_unit = ArithmeticUnit{};
     try dummy_arithmetic_unit.z_reg.checkAndSetData(0b000000000000000000000000000000000100);
     const operands = [_]OperandT{.Z};
@@ -204,6 +206,7 @@ test "not_operation" {
 }
 
 test "integer_sum_operation" {
+    // Sum registers `A` and `Z` and store the result back into `A`.
     var dummy_arithmetic_unit = ArithmeticUnit{};
     try dummy_arithmetic_unit.a_reg.checkAndSetData(0b10);
     try dummy_arithmetic_unit.z_reg.checkAndSetData(0b11);
@@ -212,6 +215,7 @@ test "integer_sum_operation" {
     try expectEqual(0b101, dummy_arithmetic_unit.a_reg.convertAndGetData());
     try expectEqual(0b0, dummy_arithmetic_unit.g_reg.convertAndGetData());
 
+    // Sum registers `A` and `B` and store the result in `B`.
     dummy_arithmetic_unit.clearAllRegisters();
     try dummy_arithmetic_unit.a_reg.checkAndSetData(0b111111111111111111111111111111111111);
     try dummy_arithmetic_unit.b_reg.checkAndSetData(0b000000000000000000000000000000000001);

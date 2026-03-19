@@ -6,6 +6,8 @@ const assert = std.debug.assert;
 const expectEqual = std.testing.expectEqual;
 const Register = @import("simple_circuits/register.zig").Register;
 const ParallelAdder = @import("simple_circuits/adder.zig").ParallelAdder;
+const MainMemory = @import("main_memory.zig").MainMemory;
+const ArithmeticUnit = @import("arithmetic_unit.zig").ArithmeticUnit;
 
 /// Depending on the type of the instruction, its operand address will be computed differently:
 /// - NormalT:  the modification is computed by applying two modifications
@@ -50,7 +52,7 @@ const AddressUnit = struct {
     /// this function.
     /// - `instr_t`: a value indicating if the instruction is normal or special.
     /// - `start_addr`: the address retrieved directly from the instruction.
-    pub fn computeOperandAddr(self: *@This(), instr_t: InstructionT, raw_addr: u15) u15 {
+    pub fn computeOperandAddr(self: *@This(), instr_t: InstructionT, main_mem: *MainMemory, raw_addr: u15) u15 {
         // The process changes depending on the instruction type:
         // `normal instruction` -> the operand address is obtained by summing the
         //                         raw address in the instruction with the
@@ -60,24 +62,31 @@ const AddressUnit = struct {
         //                          `Q`.
         // Note that, as the CEP's manual states: the order of the sum doesn't matter.
         // For this reason we always start by doing the common part, i.e. raw_addr + Q.
-        const q_addr = self.computeAbsParamAddr(ParametricCellT.Q);
-        const q_content: u36 = q_addr; // ⚠️⚠️⚠️ TODO should be retrieved from memory (e.g. getMM(q_addr));
-
+        const q_content: u36 = q_block: {
+            const q_addr = self.computeAbsParamAddr(ParametricCellT.Q);
+            main_mem.readMemory(q_addr) catch unreachable;
+            break :q_block main_mem.reg_z_ref.convertAndGetData();
+        };
         self.aj_add.setOperands(raw_addr, q_content);
         const tmp_add_result = self.aj_add.performSum();
+
         const operand_addr = switch (instr_t) {
+            .SpecialT => special_blk: {
+                break :special_blk tmp_add_result.summed_number;
+            },
+
             .NormalT => normal_blk: {
-                const p_addr = self.computeAbsParamAddr(ParametricCellT.P);
-                const p_content: u36 = p_addr; // ⚠️⚠️⚠️ TODO should be retrieved from memory (e.g. getMM(p_addr));
+                const p_content: u36 = p_block: {
+                    const p_addr = self.computeAbsParamAddr(ParametricCellT.P);
+                    main_mem.readMemory(p_addr) catch unreachable;
+                    break :p_block main_mem.reg_z_ref.convertAndGetData();
+                };
                 self.aj_add.setOperands(tmp_add_result.summed_number, p_content);
                 const final_add_result = self.aj_add.performSum();
                 break :normal_blk final_add_result.summed_number;
             },
-            .SpecialT => special_blk: {
-                break :special_blk tmp_add_result.summed_number;
-            },
         };
-        return operand_addr;
+        return @truncate(operand_addr);
     }
 
     /// Retrieves the absolute address of the requested parametric cell.
@@ -154,17 +163,62 @@ const AddressUnit = struct {
     }
 };
 
-test "get_parametric_address" {
+//----------------------------------------------------- TESTS ------------------------------------------------------
+
+test "computeAbsParamAddr" {
+    // Initialize the Address Unit setting the registers as follows:
+    // - H0 = 000_000_111_000_000
+    // - H1 = 000_111_000_000_000
+    // - R = | 000 | 0_00010 | 1_00100 |
+    //       |dummy| p_idx   | q_idx   |
     var dummy_address_unit = AddressUnit{};
-    try dummy_address_unit.h0_reg.checkAndSetData(0b000_111_000_000_000);
-    try dummy_address_unit.h1_reg.checkAndSetData(0b000_000_101_000_000);
-    try dummy_address_unit.r_reg.checkAndSetData(0b000_001_000_110_000);
+    dummy_address_unit.h0_reg.checkAndSetData(0b000_000_111_000_000) catch unreachable;
+    dummy_address_unit.h1_reg.checkAndSetData(0b000_111_000_000_000) catch unreachable;
+    dummy_address_unit.r_reg.checkAndSetData(0b000_0_00010_1_00100) catch unreachable;
 
-    const p_exp_addr: u15 = 0b000_111_000_000_000 + 0b01000;
-    const p_abs_addr: u15 = dummy_address_unit.computeAbsParamAddr(ParametricCellT.P);
-    try expectEqual(p_exp_addr, p_abs_addr);
+    const p_addr = dummy_address_unit.computeAbsParamAddr(ParametricCellT.P);
+    try expectEqual(0b000_000_111_000_000 + 0b00010, p_addr);
 
-    const q_exp_addr: u15 = 0b000_000_101_000_000 + 0b10000;
-    const q_abs_addr: u15 = dummy_address_unit.computeAbsParamAddr(ParametricCellT.Q);
-    try expectEqual(q_exp_addr, q_abs_addr);
+    const q_addr = dummy_address_unit.computeAbsParamAddr(ParametricCellT.Q);
+    try expectEqual(0b000_111_000_000_000 + 0b00100, q_addr);
+}
+
+test "computeOperandAddr" {
+
+    // Initialize the Address Unit setting the registers as follows:
+    // - H0 = 000_000_111_000_000
+    // - H1 = 000_111_000_000_000
+    // - R = | 000 | 0_00010 | 1_00100 |
+    //       |dummy| p_idx   | q_idx   |
+    var dummy_address_unit = AddressUnit{};
+    dummy_address_unit.h0_reg.checkAndSetData(0b000_000_111_000_000) catch unreachable;
+    dummy_address_unit.h1_reg.checkAndSetData(0b000_111_000_000_000) catch unreachable;
+    dummy_address_unit.r_reg.checkAndSetData(0b000_0_00010_1_00100) catch unreachable;
+
+    const p_addr = dummy_address_unit.computeAbsParamAddr(ParametricCellT.P);
+    const q_addr = dummy_address_unit.computeAbsParamAddr(ParametricCellT.Q);
+
+    // Store in entries `P` and `Q` 2 and 4 respectively.
+    var dummy_z_reg = Register.init(@constCast("Z"), Register.RegisterT.word_t);
+    var dummy_main_mem: MainMemory = try MainMemory.init(std.testing.allocator, &dummy_z_reg);
+    defer dummy_main_mem.free(std.testing.allocator) catch unreachable;
+
+    dummy_z_reg.checkAndSetData(2) catch unreachable;
+    dummy_main_mem.writeData(p_addr) catch unreachable;
+
+    dummy_z_reg.checkAndSetData(4) catch unreachable;
+    dummy_main_mem.writeData(q_addr) catch unreachable;
+
+    dummy_z_reg.clearData() catch unreachable;
+
+    // Compute the operand address in the normal case, i.e.
+    // result = raw_addr + q + p.
+    const raw_addr = 0b000_000_000_000_000;
+    const normal_addr = dummy_address_unit.computeOperandAddr(InstructionT.NormalT, &dummy_main_mem, raw_addr);
+    try expectEqual(raw_addr + 2 + 4, normal_addr);
+
+    // Compute the operand address in the special case, i.e.
+    // result = raw_addr + q.
+    const special_addr = dummy_address_unit.computeOperandAddr(InstructionT.SpecialT, &dummy_main_mem, raw_addr);
+    try expectEqual(raw_addr + 4, special_addr);
 }

@@ -209,18 +209,18 @@ fn checkFullAdderSum(fst_operand: u1, snd_operand: u1, carry_in: u1, exp_sum: u1
     return sum_eql and carry_out_eql;
 }
 
-// Checks if the FullAdder construct returns the correct result
-// for all possible inputs.
-// N | First Bit | Second Bit | Carry-input | Sum | Carry-output |
-// 1 | 0         | 0          | 0           | 0   | 0            |
-// 2 | 0         | 0          | 1           | 1   | 0            |
-// 3 | 1         | 0          | 0           | 1   | 0            |
-// 4 | 1         | 0          | 1           | 0   | 1            |
-// 5 | 0         | 1          | 0           | 1   | 0            |
-// 6 | 0         | 1          | 1           | 0   | 1            |
-// 7 | 1         | 1          | 0           | 0   | 1            |
-// 8 | 1         | 1          | 1           | 1   | 1            |
 test "full_adder_sum" {
+    // Checks if the FullAdder construct returns the correct result
+    // for all possible inputs.
+    // N | First Bit | Second Bit | Carry-input | Sum | Carry-output |
+    // 1 | 0         | 0          | 0           | 0   | 0            |
+    // 2 | 0         | 0          | 1           | 1   | 0            |
+    // 3 | 1         | 0          | 0           | 1   | 0            |
+    // 4 | 1         | 0          | 1           | 0   | 1            |
+    // 5 | 0         | 1          | 0           | 1   | 0            |
+    // 6 | 0         | 1          | 1           | 0   | 1            |
+    // 7 | 1         | 1          | 0           | 0   | 1            |
+    // 8 | 1         | 1          | 1           | 1   | 1            |
     try expect(checkFullAdderSum(0, 0, 0, 0, 0));
     try expect(checkFullAdderSum(0, 0, 1, 1, 0));
     try expect(checkFullAdderSum(1, 0, 0, 1, 0));
@@ -253,13 +253,13 @@ fn checkParallelAdderSum(fst_operand: u36, snd_operand: u36, exp_sum: u36, exp_c
     return sum_eql and carry_out_eql;
 }
 
-// Check if the ParallelAdder constructs returns the correct result for
-// some edge cases.
-// N | First Num. | Second Num. | Sum | Carry-output |
-// 1 | 0          | 0           | 0   | 0            |
-// 2 | 25         | 36          | 61  | 0            |
-// 3 | 111111...1 | 1           | 0   | 1            |
 test "parallel_adder_sum" {
+    // Check if the ParallelAdder constructs returns the correct result for
+    // some edge cases.
+    // N | First Num. | Second Num. | Sum | Carry-output |
+    // 1 | 0          | 0           | 0   | 0            |
+    // 2 | 25         | 36          | 61  | 0            |
+    // 3 | 111111...1 | 1           | 0   | 1            |
     try expect(checkParallelAdderSum(0, 0, 0, 0));
     try expect(checkParallelAdderSum(25, 36, 61, 0));
     try expect(checkParallelAdderSum(0b111111111111111111111111111111111111, 0b1, 0, 1));

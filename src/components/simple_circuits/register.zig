@@ -168,54 +168,38 @@ const stderr = &stderr_writer.interface;
 
 test "register_initialization" {
     var dummy_register: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
-    // try dummy_register.format(stderr);
-    // try stderr.print("\n", .{});
-    // try stderr.flush();
-
     try expectEqual(0, dummy_register.convertAndGetData());
 }
 
 test "register_set_value" {
-    var dummy_register: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
-    try dummy_register.checkAndSetData(1);
-    // try dummy_register.format(stderr);
-    // try stderr.print("\n", .{});
-    // try stderr.flush();
+    // Create a dummy flag register `F` and sets its content to 1.
+    var flag_reg: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
+    try flag_reg.checkAndSetData(1);
+    try expectEqual(1, flag_reg.convertAndGetData());
 
-    try expectEqual(1, dummy_register.convertAndGetData());
+    // Trying to store a value greater than `R` size.
+    try std.testing.expectError(Register.RegisterError.OutOfRange, flag_reg.checkAndSetData(36));
 
-    // Trying to store a value greater than the register's size.
-    try std.testing.expectError(Register.RegisterError.OutOfRange, dummy_register.checkAndSetData(36));
-    //try std.testing.expectError(RegisterError.OutOfRange, error_got);
-
-    // Re-declaring the register with a diffent type.
-    dummy_register = Register.init(@constCast("A"), Register.RegisterT.address_t);
-    // try dummy_register.format(stderr);
-    // try stderr.print("\n", .{});
-    // try stderr.flush();
-
-    // Setting the previous value we tried, as now we have enough space for it.
-    try dummy_register.checkAndSetData(36);
-    // try dummy_register.format(stderr);
-    // try stderr.print("\n", .{});
-    // try stderr.flush();
-
-    try expectEqual(36, dummy_register.convertAndGetData());
+    // Create the address register `ADDR` and sets its content to a value grater than 1.
+    var address_reg = Register.init(@constCast("A"), Register.RegisterT.address_t);
+    try address_reg.checkAndSetData(36);
+    try expectEqual(36, address_reg.convertAndGetData());
 }
 
 test "register_clearing" {
-    var dummy_register: Register = Register.init(@constCast("F"), Register.RegisterT.flag_t);
-
-    try dummy_register.clearData();
-    // try dummy_register.format(stderr);
-    // try stderr.print("\n", .{});
-    // try stderr.flush();
-
-    try expectEqual(0, dummy_register.convertAndGetData());
+    // Create a flag register `W`, store to it 123456, and then try to clear it.
+    // If everything went well, at the end `W` should have value 0.
+    var word_reg: Register = Register.init(@constCast("F"), Register.RegisterT.word_t);
+    try word_reg.checkAndSetData(123456);
+    try word_reg.clearData();
+    try expectEqual(0, word_reg.convertAndGetData());
 }
 
 test "min_bit_size" {
-    try expectEqual(1, Register.minBitRequired(0));
+    // | value | minimum num of bits required |
+    // | 1     | 1                            |
+    // | 32    | 6                            |
+    // | 257   | 9                            |
     try expectEqual(1, Register.minBitRequired(1));
     try expectEqual(6, Register.minBitRequired(32));
     try expectEqual(9, Register.minBitRequired(257));
