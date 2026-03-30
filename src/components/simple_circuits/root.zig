@@ -5,6 +5,7 @@ const std = @import("std");
 pub const adderF = @import("adder.zig");
 pub const registerF = @import("register.zig");
 pub const switching_circuitF = @import("switching_circuit.zig");
+pub const src_handlerF = @import("src_handler.zig");
 
 test {
     std.testing.refAllDecls(@This());

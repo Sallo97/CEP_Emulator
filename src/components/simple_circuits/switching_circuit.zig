@@ -10,254 +10,21 @@ const expectError = std.testing.expectError;
 const Register = @import("./register.zig").Register;
 const ParallelAdder = @import("./adder.zig").ParallelAdder;
 const CepSizesT = @import("./constants.zig").CepSizesT;
+const SrcHandler = @import("./src_handler.zig").SrcHandler;
 
 const SwitchError = error{
     InvalidName,
 };
-const SrcHandlerError = error{ OutOfRange, NotAttached, AlreadyAttached };
-
-/// An object representing the sources coming to a SwitchCircuit.
-/// The sources are divided into the physical devices attached to the
-/// handler and the abstact values obtained by mixing the content of the
-/// connected entities.
-///
-/// To define a specialization of SourcesHandler the following parameters are requested:
-/// - `device_num`: the cardinality of real devices attached to the handler. This value cannot change.
-/// - `src_num`: the cardinality of abstract sources attached to the handler. An abstract source is one
-///              obtained by mixing the content coming from multiple attached devices.
-/// - `SizeT`: the type of the content coming from a device/source. This is usually an unsigned integer interpreted
-///            as a bit sequence.
-///
-/// The generated struct has the following fields:
-/// - `attached_devices`: a map between  <device_name, content> in which `device_name` is its namethe `content` refers to the output
-///                       of the associated device. It should be read-only.
-///
-/// - `sources`: the array of abstract sources defined. Each entry is an ordered list of the devices and their range of influence
-///              in the content of the source.
-fn SrcHandler(comptime src_num: usize, comptime SizeT: type) type {
-    return struct {
-        /// Represents an abstract source, i.e. a incoming value obtained by mixing the content of
-        /// multiple real devices.
-        /// - `device_name`: The unique identifier of the device. The special name `00` will refer
-        ///                  to the constant zero.
-        ///
-        /// - `bits`: the number of consecutive bits associated to the device in the source after the positions
-        ///           of the previous entries.
-        const SrcPair = struct {
-            const zero = [2]u8{ '0', '0' };
-            device_name: [2]u8,
-            bits: usize,
-        };
-
-        attached_devices: std.AutoHashMap([2]u8, *SizeT) = undefined,
-        sources: [src_num]std.ArrayList(SrcPair) = undefined,
-
-        /// Set the `idx`-th source to the sequences specified by the user.
-        pub fn setSource(self: *@This(), idx: usize, list: std.ArrayList(SrcPair)) !void {
-            // Check that `idx` is within the cardinality of `sources`.
-            if (idx > self.sources.len - 1) {
-                return SrcHandlerError.OutOfRange;
-            }
-
-            // Check that all devices in `list` are attached
-            for (list.items) |srcPair| {
-                const is_zero: bool = srcPair.device_name[0] == '0' and srcPair.device_name[1] == '0';
-                const not_attached = !self.attached_devices.contains(srcPair.device_name);
-                if (not_attached and !is_zero) {
-                    return SrcHandlerError.NotAttached;
-                }
-            }
-
-            self.sources[idx] = list;
-        }
-
-        /// Attachs to the devices a register.
-        pub fn attachRegister(self: *@This(), reg: *Register(SizeT)) !void {
-            if (self.attached_devices.contains(reg.name))
-                return SrcHandlerError.AlreadyAttached;
-
-            try self.attached_devices.put(reg.*.name, &reg.data);
-        }
-
-        /// Attachs to the device a parallel adder.
-        pub fn attachParallelAdder(self: *@This(), addr: *ParallelAdder(SizeT)) !void {
-            if (self.attached_devices.contains(addr.name))
-                return SrcHandlerError.AlreadyAttached;
-
-            try self.attached_devices.put(addr.name, &addr.sum);
-        }
-
-        pub fn init(allocator: std.mem.Allocator) @This() {
-            return .{ .attached_devices = .init(allocator) };
-        }
-
-        pub fn deinit(self: *@This()) void {
-            self.attached_devices.deinit();
-        }
-
-        /// Returns the bit-mask of SizeT bits, whose bits set to one starts at `start_pos` (numbering from msb to lsb)
-        /// and are `len`.
-        /// It is by sourceValue to identify the range associated to a particular
-        /// device.
-        fn computeMask(start_pos: usize, len: usize) !SizeT {
-            // Check that the passed parameters are not ouside
-            // the range of `SizeT`.
-            // E.g. if SizeT = u4, then `start_pos` and `len` should
-            // not be greater than 4
-            const type_len = @typeInfo(SizeT).int.bits;
-            if (start_pos > type_len or
-                start_pos + len > type_len)
-                return SrcHandlerError.OutOfRange;
-
-            var mask: SizeT = 0;
-            for (0..len) |i| {
-                const pow = type_len - (start_pos + i + 1);
-                mask |= @as(SizeT, 1) << @truncate(pow);
-            }
-            return mask;
-        }
-
-        /// Returns the value of the idx-th source.
-        /// Recall that sources are identified by their position in `sources`, e.g.
-        /// source 3 is the one at position sources[3].
-        pub fn srcValue(self: @This(), idx: usize) !SizeT {
-            const device_list: std.ArrayList(SrcPair) = self.sources[idx];
-
-            var res: SizeT = 0;
-            var pos: usize = 0;
-
-            for (device_list.items) |device| {
-                const is_zero: bool = device.device_name[0] == '0' and device.device_name[1] == '0';
-                if (!is_zero) {
-                    const mask = try computeMask(pos, device.bits);
-                    const raw_content: SizeT = self.attached_devices.get(device.device_name).?.*;
-                    const to_copy: SizeT = raw_content & mask;
-                    res |= to_copy;
-                }
-                pos += device.bits;
-            }
-
-            return res;
-        }
-    };
-}
-
-test "computeMask" {
-    // Create a mask of four bits s.t. the starting position is 0
-    // and the length is 2.
-    // The generated mask should be: 0b1100
-    const FourBitSrcHandler = SrcHandler(5, u4);
-    const fst_mask: u4 = FourBitSrcHandler.computeMask(0, 2) catch unreachable;
-    try expectEqual(0b1100, fst_mask);
-
-    // Create a mask of 36-bits s.t. the starting position is 15
-    // and the length is 15.
-    // The generated mask should be: 0b000000000000000111111111111111000000
-    const WordSrcHandler = SrcHandler(5, CepSizesT.WorldT);
-    const snd_mask: CepSizesT.WorldT = WordSrcHandler.computeMask(15, 15) catch unreachable;
-    try expectEqual(0b000000000000000111111111111111000000, snd_mask);
-
-    // Create a mask of 15-bits s.t. the starting position is 0 and the length is 0.
-    // The generated mask should be: 0b000000000000000
-    const AddressSrcHandler = SrcHandler(5, CepSizesT.AddressT);
-    const thrd_mask: CepSizesT.AddressT = AddressSrcHandler.computeMask(0, 0) catch unreachable;
-    try expectEqual(0, thrd_mask);
-
-    // Try to create a mask of 15-bits s.t. the starting position is 16 and the length is 2.
-    // The mask should not be generated, instead an `OutOfRange` error should occur.
-    try expectError(SrcHandlerError.OutOfRange, AddressSrcHandler.computeMask(15, 2));
-
-    // Try to create a mask of 36-bits s.t. the starting position is 3 and the length 13.
-    // The mask should not be generated, instead an `OutOfRange` error should occur.
-    try expectError(SrcHandlerError.OutOfRange, AddressSrcHandler.computeMask(3, 13));
-}
-
-test "srcValue" {
-    // Construct the common SrcHandler for all our tests.
-    // - Number type: u4.
-    // - Attached devices:
-    //      * A (reg)  ; data = 0b1010
-    //      * B (reg)  ; data = 0b1100
-    //      * AD(addr) ; data = 0b1101
-    // - sources: there are four sources
-    //      * e0 = 0 0 0 0     = [ ("00", 4)             ]
-    //      * e1 = a1 a2 a3 a4 = [ ("A ", 4)             ]
-    //      * e2 = a1 a2 b3 b4 = [ ("A ", 2) ; ("B", 2)  ]
-    //      * e3 = d1 d2 d3 0  = [ ("AD", 3) ; ("00", 1) ]
-
-    const FourBitReg = Register(u4);
-    const FourBitAdder = ParallelAdder(u4);
-
-    var reg_a = FourBitReg.init(@constCast("A")) catch unreachable;
-    reg_a.data = 0b1010;
-
-    var reg_b = FourBitReg.init(@constCast("B")) catch unreachable;
-    reg_b.data = 0b1100;
-
-    var addr_ad = FourBitAdder.init(@constCast("AD")) catch unreachable;
-    addr_ad.sum = 0b1101;
-
-    const FourBitSrcHandler = SrcHandler(4, u4);
-    var dummy_handler = FourBitSrcHandler.init(std.testing.allocator);
-    defer dummy_handler.deinit();
-
-    dummy_handler.attachRegister(&reg_a) catch unreachable;
-    dummy_handler.attachRegister(&reg_b) catch unreachable;
-    dummy_handler.attachParallelAdder(&addr_ad) catch unreachable;
-
-    var e0: std.ArrayList(FourBitSrcHandler.SrcPair) = .empty;
-    defer e0.deinit(std.testing.allocator);
-    try e0.append(std.testing.allocator, FourBitSrcHandler.SrcPair{ .device_name = FourBitSrcHandler.SrcPair.zero, .bits = 4 });
-    dummy_handler.setSource(0, e0) catch unreachable;
-
-    var e1: std.ArrayList(FourBitSrcHandler.SrcPair) = .empty;
-    defer e1.deinit(std.testing.allocator);
-    try e1.append(std.testing.allocator, FourBitSrcHandler.SrcPair{ .device_name = reg_a.name, .bits = 4 });
-    dummy_handler.setSource(1, e1) catch unreachable;
-
-    var e2: std.ArrayList(FourBitSrcHandler.SrcPair) = .empty;
-    defer e2.deinit(std.testing.allocator);
-    try e2.append(std.testing.allocator, FourBitSrcHandler.SrcPair{ .device_name = reg_a.name, .bits = 2 });
-    try e2.append(std.testing.allocator, FourBitSrcHandler.SrcPair{ .device_name = reg_b.name, .bits = 2 });
-    dummy_handler.setSource(2, e2) catch unreachable;
-
-    var e3: std.ArrayList(FourBitSrcHandler.SrcPair) = .empty;
-    defer e3.deinit(std.testing.allocator);
-    try e3.append(std.testing.allocator, FourBitSrcHandler.SrcPair{ .device_name = addr_ad.name, .bits = 3 });
-    try e3.append(std.testing.allocator, FourBitSrcHandler.SrcPair{ .device_name = FourBitSrcHandler.SrcPair.zero, .bits = 1 });
-    dummy_handler.setSource(3, e3) catch unreachable;
-
-    // Try to retrive e0 = d1 d2 d3 0 = [ ("AD", 3) ; ("00", 1) ]
-    // It should return value: 0b0000
-    const e0_val = dummy_handler.srcValue(0);
-    try expectEqual(0, e0_val);
-
-    // Try to retrieve e1 = a1 a2 a3 a4 = [ ("A ", 4) ]
-    // It should return value: 0b1010
-    const e1_val = dummy_handler.srcValue(1);
-    try expectEqual(0b1010, e1_val);
-
-    // Try to retrieve e2 = a1 a2 b3 b4 =  [ ("A ", 2) ; ("B", 2) ]
-    // It should return value: 0b1000
-    const e2_val = dummy_handler.srcValue(2);
-    try expectEqual(0b1000, e2_val);
-
-    // Try to retrieve e3 = d1 d2 d3 0 =  [ ("AD", 3) ; ("00", 1) ]
-    // It should return value: 0b1100
-    const e3_val = dummy_handler.srcValue(3);
-    try expectEqual(0b1100, e3_val);
-}
 
 // /// A component which, given some inputs coming from attached sources,
 // /// computes a single output depending on some custom logic and selection
 // /// lines.
 // ///
 // /// A switching circuit is attached to one or more input components, which usually
-// /// are registers and parallel adders. The actual sources used to determine the output
-// /// can be more, obtained by mixing the contents of the attached devices. The number
-// /// of input devices is fixed and set by the parameter `input_num`; the number of
-// /// actual sources is also fixed.
-// /// The number of bits of the inputs' content is fixed and set by the parameter `SizeT`.
+// /// are registers and parallel adders. These components can be mixed to provide
+// /// more inputs than the actual number of attached devices. The management of the
+// /// incoming information is handled by the struct `SrcHandler`.
+// /// An instance has always the first entry (e0) set to zero.
 // ///
 // /// A selection line is an input which will be used by the custom logic of each instance
 // /// to decide which source to use and how to use it in producing the output. The number
@@ -307,7 +74,7 @@ test "srcValue" {
 // ///                of length `SizeT`.
 // pub fn SwitchingCircuit(
 //     comptime SizeT: type,
-//     comptime input_num: usize,
+//     comptime : usize,
 //     comptime select_num: usize,
 // ) type {
 //     return struct {
