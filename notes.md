@@ -1,6 +1,11 @@
 # Introduction
 This file contains various considerations I have during the development of the project. They are here just to keep track of what I am thinking at the moment.
 
+## Register R
+From the [10]G. B. Gerace, La temporizzazione, la minimizzazione dei tempi ed il controllo dinamico della CEP, 1963.:
+- `... determinato dalla somma dei registri H0 e H1 con R...`.
+- `... gli indirizzi parametrici sono spediti a R`.
+
 ## Register G
 Register `G` is a flag register, i.e. its size is just 1 bit and is used for checking possible properties after an instruction (e.g. an overflow after an addition). 
 
