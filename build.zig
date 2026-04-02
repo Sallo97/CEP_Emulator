@@ -6,12 +6,69 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     // const optimize = b.standardOptimizeOption(.{});
 
-    // ------------------------------ BASIC CIRCUITS MODULE --------------------------------
-    const simple_circuits_module = b.addModule(
-        // Name of the module
-        "CEP_simple_circuits",
-        // Options
-        .{ .root_source_file = b.path("src/components/simple_circuits/root.zig"), .target = target });
+    // ------------------------------ UTILS MODULE -----------------------------------------
+    const utils_mod = b.addModule("utils", .{
+        .root_source_file = b.path("src/utils/root.zig"),
+        .target = target,
+    });
+    const utils_ref = std.Build.Module.Import{
+        .name = "utils",
+        .module = utils_mod,
+    };
+
+    const utils_t_mod = b.addModule("utils_test", .{
+        .root_source_file = b.path("src/utils/root.zig"),
+        .target = target,
+        .imports = &.{utils_ref},
+    });
+    const utils_t = b.addTest(.{ .root_module = utils_t_mod });
+    const run_utils_t = b.addRunArtifact(utils_t);
+    const step_utils = b.step("utils_test", "Tests general common functions");
+    step_utils.dependOn(&run_utils_t.step);
+
+    // ------------------------------ SWITCHING CIRCUIT MODULES ------------------------------
+    const sw_mod = b.addModule("switching_circuit", .{
+        .root_source_file = b.path("src/components/simple_circuits/switching_circuit/root.zig"),
+        .target = target,
+    });
+    const sw_ref = std.Build.Module.Import{
+        .name = "switching_circuit",
+        .module = sw_mod,
+    };
+
+    const sw_t_mod = b.addModule("switching_circuit_test", .{
+        .root_source_file = b.path("src/components/simple_circuits/switching_circuit/root.zig"),
+        .target = target,
+        .imports = &.{utils_ref},
+    });
+    const sw_t = b.addTest(.{ .root_module = sw_t_mod });
+    const run_sw_t = b.addRunArtifact(sw_t);
+    const step_sw = b.step("switching_circuit_test", "Test functionality of SwitchingCircuit");
+    step_sw.dependOn(&run_sw_t.step);
+
+    // ------------------------------ SIMPLE CIRCUITS MODULES --------------------------------
+    const smpl_circuits_mod = b.addModule("simple_circuits", .{
+        .root_source_file = b.path("src/components/simple_circuits/root.zig"),
+        .target = target,
+    });
+    const smpl_circuits_ref = std.Build.Module.Import{
+        .name = "simple_circuits",
+        .module = smpl_circuits_mod,
+    };
+
+    const smpl_circuits_t_mod = b.addModule("simple_circuits_tests", .{
+        .root_source_file = b.path("src/components/simple_circuits/root.zig"),
+        .target = target,
+        .imports = &.{
+            smpl_circuits_ref,
+            utils_ref,
+            sw_ref,
+        },
+    });
+    const smpl_circuits_t = b.addTest(.{ .root_module = smpl_circuits_t_mod });
+    const run_smpl_circuits_t = b.addRunArtifact(smpl_circuits_t);
+    const step_smpl_circuits = b.step("simple_circuits_test", "tests for Registers and Parallel Adders");
+    step_smpl_circuits.dependOn(&run_smpl_circuits_t.step);
 
     // ------------------------- MAIN MODULE DEFINITIONS ------------------------------
 
@@ -45,26 +102,5 @@ pub fn build(b: *std.Build) void {
     }
 
     // ----------------------------- TEST MODULE DEFINITIONS -----------------------------
-    const simple_circuits_tests_module = b.addModule(
-        // Name of the module
-        "simple_circuits_tests",
-        // Options
-        .{
-            .root_source_file = b.path("src/components/simple_circuits/root.zig"),
-            .target = target,
-            .imports = &.{.{ .name = "CEP_simple_circuits", .module = simple_circuits_module }},
-        });
-    const simple_circuit_tests = b.addTest(.{ .root_module = simple_circuits_tests_module });
-    const run_simple_circuits_mod_tests = b.addRunArtifact(simple_circuit_tests);
-    const test_simple_circuits_step = b.step("simple_circuits_test", "Run tests");
-    test_simple_circuits_step.dependOn(&run_simple_circuits_mod_tests.step);
 
-    const middle_componets_tests_module = b.addModule("middle_components_tests", .{
-        .root_source_file = b.path("src/components/root.zig"),
-        .target = target,
-    });
-    const middle_components_tests = b.addTest(.{ .root_module = middle_componets_tests_module });
-    const run_middle_components_mod_tests = b.addRunArtifact(middle_components_tests);
-    const test_middle_components_step = b.step("middle_components_test", "Run tests");
-    test_middle_components_step.dependOn(&run_middle_components_mod_tests.step);
 }
