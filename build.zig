@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const utils_t_mod = b.addModule("utils_test", .{
-        .root_source_file = b.path("src/utils/root.zig"),
+        .root_source_file = b.path("src/utils/test.zig"),
         .target = target,
         .imports = &.{utils_ref},
     });
@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const sw_t_mod = b.addModule("switching_circuit_test", .{
-        .root_source_file = b.path("src/components/simple_circuits/switching_circuit/root.zig"),
+        .root_source_file = b.path("src/components/simple_circuits/switching_circuit/test.zig"),
         .target = target,
         .imports = &.{utils_ref},
     });
@@ -57,7 +57,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const smpl_circuits_t_mod = b.addModule("simple_circuits_tests", .{
-        .root_source_file = b.path("src/components/simple_circuits/root.zig"),
+        .root_source_file = b.path("src/components/simple_circuits/test.zig"),
         .target = target,
         .imports = &.{
             smpl_circuits_ref,
@@ -69,6 +69,30 @@ pub fn build(b: *std.Build) void {
     const run_smpl_circuits_t = b.addRunArtifact(smpl_circuits_t);
     const step_smpl_circuits = b.step("simple_circuits_test", "tests for Registers and Parallel Adders");
     step_smpl_circuits.dependOn(&run_smpl_circuits_t.step);
+
+    // ------------------------- ARITHMETIC UNIT MODULE DEFINITIONS -------------------
+    const arith_mod = b.addModule("arithmetic_unit", .{
+        .root_source_file = b.path("src/components/arithmetic_unit.zig"),
+        .target = target,
+    });
+    const arith_ref = std.Build.Module.Import{
+        .name = "airhtmetic_unit",
+        .module = arith_mod,
+    };
+
+    const arith_t_mod = b.addModule("arithmetic_unit_test", .{
+        .root_source_file = b.path("src/components/arithmetic_unit.zig"),
+        .target = target,
+        .imports = &.{
+            arith_ref,
+            utils_ref,
+            smpl_circuits_ref,
+        },
+    });
+    const arith_t = b.addTest(.{ .root_module = arith_t_mod });
+    const run_arith_t = b.addRunArtifact(arith_t);
+    const step_arith = b.step("arithmetic_unit_test", "Tests the arithmetic unit");
+    step_arith.dependOn(&run_arith_t.step);
 
     // ------------------------- MAIN MODULE DEFINITIONS ------------------------------
 

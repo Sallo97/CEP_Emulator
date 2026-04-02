@@ -1,10 +1,7 @@
-//! The root file for the module holding all the basic circuits components.
-//! It calls also all the tests.
+//! This file declares the definitions that can be seen externally by modules referencing this.
 
 const std = @import("std");
-pub const adderF = @import("adder.zig");
-pub const registerF = @import("register.zig");
 
-test {
-    std.testing.refAllDecls(@This());
-}
+pub const Register = @import("register.zig").Register;
+pub const ParallelAdder = @import("adder.zig").ParallelAdder;
+pub const SwitchCircuit = @import("switching_circuit").SwitchCircuit;

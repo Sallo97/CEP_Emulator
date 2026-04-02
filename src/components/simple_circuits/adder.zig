@@ -8,8 +8,9 @@ const std = @import("std");
 const expect = std.testing.expect;
 const expectError = std.testing.expectError;
 const expectEqual = std.testing.expectEqual;
-const CepSizesT = @import("utils").constantsF.CepSizesT;
-const Device = @import("utils").deviceF.Device;
+
+const CepSizesT = @import("utils").CepSizesT;
+const Device = @import("utils").Device;
 
 const AdderError = error{InvalidName};
 

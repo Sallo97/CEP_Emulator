@@ -1,225 +1,52 @@
-//! This file defines the Arithmetic Unit, i.e. the component in the CEP responsible
-//! for executing all arithmetic computations.
+//! This file defines the Arithmetic Unit, i.e. the region
+//! of the computer dedicate in handling arithmetic operations.
 
 const std = @import("std");
-const assert = std.debug.assert;
-const expectEqual = std.testing.expectEqual;
-const Register = @import("simple_circuits/register.zig").Register;
-const ParallelAdder = @import("simple_circuits/adder.zig").ParallelAdder;
 
-/// Defines the kind of operation requested to the Arithmetic Unit by the CPU.
-const OperationT = enum {
-    CopyT,
-    NotT,
-    AdditionT,
-};
+const Register = @import("simple_circuits").Register;
+const ParallelAdder = @import("simple_circuits").ParallelAdder;
+const SwitchCircuit = @import("simple_circuits").SwitchCircuit;
+const CepSizesT = @import("utils").CepSizesT;
 
-/// Defines the registers requested for an operation.
-const OperandT = enum {
-    A,
-    B,
-    C,
-    Z,
-};
+// An instance implementing the area in the computer responsible for
+// handling arithmetic operations.
+//
+// It is made of the following components:
+// - Registers (# = 3):
+//      * A with type: WordReg inputs: [ KA ]
+//      * B with type: WordReg inputs: [ KB ]
+//      * C with type: WordReg inputs: [ KC ]
+//
+// - ParallelAdders (# = 1):
+//      * AD with type: WordReg inputs: [ KV, KU ]
+//
+// - Switching Circuits (# = 5):
+//      * KA with type: WordReg  inputs: [ AD, A,     ](# = 2)  #virtual_srcs: 5
+//      * KB with type: WordReg  inputs: [ A,  AD, B  ](# = 3)  #virtual_srcs: 5
+//      * KC with type: WordReg  inputs: [ AD, QC, AJ ](# = 3)  #virtual_srcs: 3
+//      * KU with type: WordReg  inputs: [ E,  Z,  C  ](# = 3)  #virtual_srcs: 3
+//      * KV with type: WordReg  inputs: [ A,  B,  C  ](# = 3)  #virtual_srcs: 3
+const ArithmeticUnit = struct {
+    // Register' fields
+    reg_a: Register(CepSizesT.WorldT) = undefined,
+    reg_b: Register(CepSizesT.WorldT) = undefined,
+    reg_c: Register(CepSizesT.WorldT) = undefined,
 
-/// A circuit specialized in implementing arithmetic computations.
-/// The unit supports both fixed point and floating point arithmetics.
-///
-/// Its main components are:
-/// - two 36-bits registers `A` and `B`, used as accumulators.
-/// - register `C`, used for storing the memory address of the current operand
-///   or generic auxiliary data.
-/// - the adder `AD`.
-///
-/// Altough they are not part of the unit, physically are present:
-/// - the memory register `Z`, which contains the content pointed by the current memory address.
-/// It is adviced to construct an instance through the `init` method.
-///
-/// The instruction list defines the flag register `G` for holding the overflow bit of an arithmetic instruction.
-/// It is not specified where it resides, so we assume it is inside the arithmetic unit.
-pub const ArithmeticUnit = struct {
-    const name = "Arithmetic Unit";
+    // ParallelAdders' fields
+    addr_ad: ParallelAdder(CepSizesT.WorldT) = undefined,
 
-    a_reg: Register = Register.init(@constCast("A"), Register.RegisterT.word_t),
-    b_reg: Register = Register.init(@constCast("B"), Register.RegisterT.word_t),
-    c_reg: Register = Register.init(@constCast("C"), Register.RegisterT.word_t),
-    ad_add: ParallelAdder = ParallelAdder.init("AD"),
+    // Switching Circuits' fields
+    sw_ka: SwitchCircuit(CepSizesT.WorldT, 2, 5) = undefined,
+    sw_kb: SwitchCircuit(CepSizesT.WorldT, 3, 5) = undefined,
+    sw_kc: SwitchCircuit(CepSizesT.WorldT, 3, 3) = undefined,
+    sw_ku: SwitchCircuit(CepSizesT.WorldT, 3, 3) = undefined,
+    sw_kv: SwitchCircuit(CepSizesT.WorldT, 3, 3) = undefined,
 
-    z_reg: Register = Register.init(@constCast("Z"), Register.RegisterT.word_t),
+    pub fn init() ArithmeticUnit {
+        // Registers' initialization
 
-    g_reg: Register = Register.init(@constCast("G"), Register.RegisterT.flag_t),
+        // ParallelAdders' initialization
 
-    /// Apply the requested operation.
-    /// Invokes ArithmeticUnitError if something went wrong.
-    /// - `allocator`: will be used to allocate temporary information needed during the processing.
-    /// - `operation_t`: the kind of operation requested (e.g. Addition, Copy, etc...).
-    /// - `number_t`: the kind of number used, i.e. if they are integers, fixed or floating point numbers.
-    /// - `precision_t`: the size of the operands (i.e. if a number spans one or two registers).
-    pub fn applyOperation(self: *@This(), allocator: std.mem.Allocator, operation_t: OperationT, operands: []OperandT) !void {
-        var operands_ptr_list = self.getOperandPtrArray(allocator, operands);
-        defer operands_ptr_list.deinit(allocator);
-
-        switch (operation_t) {
-            .CopyT => {
-                // A copy operation is always between two
-                // operands.
-                //
-                // The source register's content is simply
-                // copied and set as the new value of the
-                // destination register.
-                assert(operands_ptr_list.items.len == 2);
-                const src_reg_ptr: *Register = operands_ptr_list.items[0];
-                const dst_reg_ptr: *Register = operands_ptr_list.items[1];
-
-                try dst_reg_ptr.checkAndSetData(src_reg_ptr.convertAndGetData());
-            },
-            .NotT => {
-                // A not operation has always just one operand.
-                //
-                // The not simply returns the complement of the input, i.e. each
-                // bit is set to the opposite one.
-                assert(operands_ptr_list.items.len == 1);
-
-                const src_reg_ptr: *Register = operands_ptr_list.items[0];
-                const negated_value = ~(src_reg_ptr.convertAndGetData());
-
-                try src_reg_ptr.checkAndSetData(negated_value);
-            },
-            .AdditionT => {
-                // The addition operation has always three operands:
-                // - the first one is the return register.
-                // - the last two are the operand registers.
-                //
-                // The sum is implemented by passing the source registers'
-                // content to the parallel adder and setting the destination
-                // register and flag register `G` to the result of the addition.
-                assert(operands_ptr_list.items.len == 3);
-                const fst_operand_reg_ptr = operands_ptr_list.items[0];
-                const snd_operand_reg_ptr = operands_ptr_list.items[1];
-                const return_reg_ptr = operands_ptr_list.items[2];
-
-                self.ad_add.setOperands(fst_operand_reg_ptr.convertAndGetData(), snd_operand_reg_ptr.convertAndGetData());
-                const sum_result = self.ad_add.performSum();
-
-                try return_reg_ptr.checkAndSetData(sum_result.summed_number);
-            },
-        }
-    }
-
-    /// Private function which given a list of operands it returns
-    /// a list of pointers to the associated real registers.
-    fn getOperandPtrArray(self: *@This(), allocator: std.mem.Allocator, operands: []OperandT) std.ArrayList(*Register) {
-        var op_list: std.ArrayList(*Register) = .empty;
-        for (operands) |operand| {
-
-            // Retrieve the current operand's pointer.
-            const op_ptr: *Register = switch (operand) {
-                .A => &self.a_reg,
-                .B => &self.b_reg,
-                .C => &self.c_reg,
-                .Z => &self.z_reg,
-            };
-
-            op_list.append(allocator, op_ptr) catch unreachable;
-        }
-        return op_list;
-    }
-
-    /// Sets all registers of the instance to zero.
-    pub fn clearAllRegisters(self: *@This()) void {
-        try self.a_reg.clearData();
-        try self.b_reg.clearData();
-        try self.c_reg.clearData();
-        try self.z_reg.clearData();
-        try self.g_reg.clearData();
-
-        self.ad_add.clearAdder();
-    }
-
-    pub fn format(self: @This(), writer: *std.io.Writer) !void {
-        const component_prefix = "\n-";
-        try writer.print("[{s}]", .{ArithmeticUnit.name});
-        try writer.print("{s}", .{component_prefix});
-        try self.a_reg.format(writer);
-        try writer.print("{s}", .{component_prefix});
-        try self.b_reg.format(writer);
-        try writer.print("{s}", .{component_prefix});
-        try self.c_reg.format(writer);
-        try writer.print("{s}", .{component_prefix});
-        try self.ad_add.format(writer);
-        try writer.print("{s}", .{component_prefix});
-        try self.z_reg.format(writer);
-        try writer.print("{s}", .{component_prefix});
-        try self.g_reg.format(writer);
-        try writer.print("\n", .{});
-        try writer.flush();
+        // Switching Circuits' initialization
     }
 };
-
-// Defines a writer to the standard error, which is used for testing the `format` function.
-var stderr_buffer: [1024]u8 = undefined;
-var stderr_writer = std.fs.File.stderr().writer(&stderr_buffer);
-const stderr = &stderr_writer.interface;
-
-//----------------------------------------------------- TESTS ------------------------------------------------------
-
-test "get_operand" {
-    // Create an array of enum operands [A, B, C, Z, A, B, C, C ] and check if
-    // `getOperandPtrArray returns the associated list of register pointers.
-    var dummy_arithmetic_unit = ArithmeticUnit{};
-    const dummy_allocator = std.testing.allocator;
-    const operands = [_]OperandT{ .A, .B, .C, .Z, .A, .B, .C, .C };
-    var operands_ptr_list: std.ArrayList(*Register) = dummy_arithmetic_unit.getOperandPtrArray(dummy_allocator, @constCast(&operands));
-    defer operands_ptr_list.deinit(dummy_allocator);
-
-    try expectEqual(8, operands_ptr_list.items.len);
-    try expectEqual(&dummy_arithmetic_unit.a_reg, operands_ptr_list.items[0]);
-    try expectEqual(&dummy_arithmetic_unit.b_reg, operands_ptr_list.items[1]);
-    try expectEqual(&dummy_arithmetic_unit.c_reg, operands_ptr_list.items[2]);
-    try expectEqual(&dummy_arithmetic_unit.z_reg, operands_ptr_list.items[3]);
-    try expectEqual(&dummy_arithmetic_unit.a_reg, operands_ptr_list.items[4]);
-    try expectEqual(&dummy_arithmetic_unit.b_reg, operands_ptr_list.items[5]);
-    try expectEqual(&dummy_arithmetic_unit.c_reg, operands_ptr_list.items[6]);
-    try expectEqual(&dummy_arithmetic_unit.c_reg, operands_ptr_list.items[7]);
-}
-
-test "copy_operation" {
-    // Request to the arithmetic unit to copy the content of
-    // register `A` into register `Z`.
-    var dummy_arithmetic_unit = ArithmeticUnit{};
-    try dummy_arithmetic_unit.a_reg.checkAndSetData(0b100);
-    const operands = [_]OperandT{ .A, .Z };
-    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.CopyT, @constCast(&operands));
-
-    try expectEqual(4, dummy_arithmetic_unit.z_reg.convertAndGetData());
-}
-
-test "not_operation" {
-    // Request to the arithmetic unit to negate the content of
-    // register `Z`.
-    var dummy_arithmetic_unit = ArithmeticUnit{};
-    try dummy_arithmetic_unit.z_reg.checkAndSetData(0b000000000000000000000000000000000100);
-    const operands = [_]OperandT{.Z};
-    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.NotT, @constCast(&operands));
-
-    try expectEqual(0b111111111111111111111111111111111011, dummy_arithmetic_unit.z_reg.convertAndGetData());
-}
-
-test "integer_sum_operation" {
-    // Sum registers `A` and `Z` and store the result back into `A`.
-    var dummy_arithmetic_unit = ArithmeticUnit{};
-    try dummy_arithmetic_unit.a_reg.checkAndSetData(0b10);
-    try dummy_arithmetic_unit.z_reg.checkAndSetData(0b11);
-    var operands = [_]OperandT{ .A, .Z, .A };
-    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.AdditionT, @constCast(&operands));
-    try expectEqual(0b101, dummy_arithmetic_unit.a_reg.convertAndGetData());
-    try expectEqual(0b0, dummy_arithmetic_unit.g_reg.convertAndGetData());
-
-    // Sum registers `A` and `B` and store the result in `B`.
-    dummy_arithmetic_unit.clearAllRegisters();
-    try dummy_arithmetic_unit.a_reg.checkAndSetData(0b111111111111111111111111111111111111);
-    try dummy_arithmetic_unit.b_reg.checkAndSetData(0b000000000000000000000000000000000001);
-    operands = [_]OperandT{ .A, .B, .Z };
-    try dummy_arithmetic_unit.applyOperation(std.testing.allocator, OperationT.AdditionT, @constCast(&operands));
-    try expectEqual(0b0, dummy_arithmetic_unit.z_reg.convertAndGetData());
-}

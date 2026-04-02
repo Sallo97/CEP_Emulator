@@ -7,9 +7,9 @@ const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 
-const Device = @import("utils").deviceF.Device;
+const Device = @import("utils").Device;
 const SelectLine = @import("selection_line.zig").SelectionLine;
-const MaskUtilsT = @import("utils").maskUtilsF.MaskUtils;
+const MaskUtilsT = @import("utils").MaskUtils;
 
 const SwitchCircuitError = error{ InvalidName, OutOfRange, NotAttached, AlreadyAttached, OverflowBits };
 
@@ -52,7 +52,7 @@ const SwitchCircuitError = error{ InvalidName, OutOfRange, NotAttached, AlreadyA
 /// - `select_lines: an array of select_lines. Each member determines portion of the associated virtual source should be picked.
 ///                  Note that, while the default virtual source e0 is alway initialized, its associated selection line must
 ///                  be defined manually.
-pub fn SwitchCircuit(comptime dev_num: usize, comptime src_num: usize, comptime SizeT: type) type {
+pub fn SwitchCircuit(comptime SizeT: type, comptime dev_num: usize, comptime src_num: usize) type {
     return struct {
         /// the true number of virtual soruces attacched. It counts the default source e0 providing the constant zero.
         const total_srcs = src_num + 1;
@@ -73,7 +73,7 @@ pub fn SwitchCircuit(comptime dev_num: usize, comptime src_num: usize, comptime 
             }
             const conv_name = [2]u8{ name[0], name[1] };
 
-            var in_hdl = SwitchCircuit(dev_num, src_num, SizeT){
+            var in_hdl = SwitchCircuit(SizeT, dev_num, src_num){
                 .name = conv_name,
             };
             for (0..total_srcs) |idx| {
@@ -164,7 +164,7 @@ test "srcValue_1" {
     //      * ξ_3 = [ ξ_3(0,1,2,3) = 0b1111 ]   value = 0b1111
     //
 
-    var sw = try SwitchCircuit(3, 3, u4).init(@constCast("KA"));
+    var sw = try SwitchCircuit(u4, 3, 3).init(@constCast("KA"));
     defer sw.deinit(debug_allocator) catch unreachable;
 
     sw.devices[0] = Device(u4){
@@ -249,7 +249,7 @@ test "srcValue_2" {
     // - value (e2) = 0b1000
     // - value (e3) = 0b1000
 
-    var sw = try SwitchCircuit(3, 3, u4).init(@constCast("KA"));
+    var sw = try SwitchCircuit(u4, 3, 3).init(@constCast("KA"));
     defer sw.deinit(debug_allocator) catch unreachable;
 
     sw.devices[0] = Device(u4){
@@ -332,7 +332,7 @@ test "computeOutput" {
     //                         ^        ^
     //                      from e0  from e1
 
-    var sw = try SwitchCircuit(1, 1, u4).init(@constCast("KA"));
+    var sw = try SwitchCircuit(u4, 1, 1).init(@constCast("KA"));
     defer sw.deinit(debug_allocator) catch unreachable;
 
     sw.devices[0] = Device(u4){

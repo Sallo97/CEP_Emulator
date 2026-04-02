@@ -2,8 +2,9 @@ const std = @import("std");
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
-const CepSizesT = @import("utils").constantsF.CepSizesT;
-const Device = @import("utils").deviceF.Device;
+
+const CepSizesT = @import("utils").CepSizesT;
+const Device = @import("utils").Device;
 
 const RegisterError = error{ InvalidName, InputAlreadyAttached };
 
