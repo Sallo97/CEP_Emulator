@@ -63,8 +63,16 @@ pub fn SwitchCircuit(comptime SizeT: type, comptime dev_num: usize, comptime src
 
         devices: [dev_num]Device(SizeT) = undefined,
         select_lines: [total_srcs]SelectLine(SizeT) = undefined,
-        virtual_sources: [total_srcs]std.ArrayList(DevMask) = undefined,
-        const DevMask = struct { idx: usize = undefined, mask: SizeT = undefined };
+        virtual_sources: [total_srcs]std.ArrayList(DevPortion) = undefined,
+        // Represents a portion of data coming from a physical device:
+        // - `idx`: the index in `devices` of the device.
+        // - `mask`: the content to copy, represented as a bit-mask.
+        // - `negated`: if the retrieved content should be negated before returned or not.
+        const DevPortion = struct {
+            idx: usize = undefined,
+            mask: SizeT = undefined,
+            negated: bool = undefined,
+        };
 
         /// Initializes an empty instance having the default virtual source e0 already set.
         pub fn init(name: []u8) !@This() {
@@ -100,10 +108,24 @@ pub fn SwitchCircuit(comptime SizeT: type, comptime dev_num: usize, comptime src
 
             // Retrieve the raw content of the virtual source
             var raw_data: SizeT = 0;
+            var curr_pos: isize = 0;
+
             const src = self.virtual_sources[idx];
-            for (src.items) |dev_mask| {
-                const content = self.devices[dev_mask.idx].getData() & dev_mask.mask;
-                raw_data |= content;
+            for (src.items) |mem| {
+                const content = c_blk: {
+                    const temp_cont = self.devices[mem.idx].getData() & mem.mask;
+                    break :c_blk if (!mem.negated) temp_cont else ~temp_cont;
+                };
+
+                // Copy the content and the correct position
+                const pos_content = MaskUtilsT(SizeT).fstSetPos(mem.mask);
+                if (pos_content == null) break;
+                const shift_amt: isize = curr_pos - pos_content.?;
+                const positioned_content = if (shift_amt > 0) content >> @intCast(@abs(shift_amt)) else content << @intCast(@abs(shift_amt));
+                raw_data = if (!mem.negated) raw_data | positioned_content else raw_data & positioned_content;
+
+                // Update
+                curr_pos += MaskUtilsT(SizeT).bitsSet(mem.mask);
             }
 
             // Return only the portions of the raw content being selected
@@ -153,10 +175,10 @@ test "srcValue_1" {
     //      * B  : data = 0b1100
     //      * AD : data = 0b1101
     // - virtual sources (# = 4):
-    //      * e0 = 0 0 0 0     = [                            ]  ⚠︎ This is initialized automatically by the `init` method.
-    //      * e1 = a1 a2 a3 a4 = [ (0 , 0b1111)               ]
-    //      * e2 = a1 a2 b3 b4 = [ (0 , 0b1100) ; (1, 0b0011) ]
-    //      * e3 = d1 d2 d3 0  = [ (2 , 0b1110) ]
+    //      * e0 = 0 0 0 0     = [                                          ]  ⚠︎ This is initialized automatically by the `init` method.
+    //      * e1 = a1 a2 a3 a4 = [ (0 , 0b1111, false)                      ]
+    //      * e2 = a1 a2 b3 b4 = [ (0 , 0b1100, false) ; (1, 0b0011, false) ]
+    //      * e3 = d1 d2 d3 0  = [ (2 , 0b1110, false)                      ]
     // - selection lines (# = 4):
     //      * ξ_0 = [ ξ_0(0,1,2,3) = 0b1111 ]   value = 0b1111
     //      * ξ_1 = [ ξ_1(0,1,2,3) = 0b1111 ]   value = 0b1111
@@ -192,14 +214,14 @@ test "srcValue_1" {
 
     //      * e2 = a1 a2 b3 b4 = [ (0 , 0b1100) ; (1, 0b0011) ]
     //      * ξ_2 = [ ξ_2(0,1,2,3) = 0b1111 ]   value = 0b1111
-    sw.virtual_sources[2].append(debug_allocator, .{ .idx = 0, .mask = 0b1100 }) catch unreachable;
-    sw.virtual_sources[2].append(debug_allocator, .{ .idx = 1, .mask = 0b0011 }) catch unreachable;
+    sw.virtual_sources[2].append(debug_allocator, .{ .idx = 0, .mask = 0b1100, .negated = false }) catch unreachable;
+    sw.virtual_sources[2].append(debug_allocator, .{ .idx = 1, .mask = 0b0011, .negated = false }) catch unreachable;
     sw.select_lines[2].addGroup(debug_allocator, 0b1111) catch unreachable;
     sw.select_lines[2].setGroup(0) catch unreachable;
 
     //      * e3 = d1 d2 d3 0  = [ (2 , 0b1110) ]
     //      * ξ_3 = [ ξ_3(0,1,2,3) = 0b1111 ]   value = 0b1111
-    sw.virtual_sources[3].append(debug_allocator, .{ .idx = 2, .mask = 0b1110 }) catch unreachable;
+    sw.virtual_sources[3].append(debug_allocator, .{ .idx = 2, .mask = 0b1110, .negated = false }) catch unreachable;
     sw.select_lines[3].addGroup(debug_allocator, 0b1111) catch unreachable;
     sw.select_lines[3].setGroup(0) catch unreachable;
 
@@ -233,10 +255,10 @@ test "srcValue_2" {
     //      * B : data = 0b1100
     //      * C : data = 0b1101
     // - virtual sources (# = 4):
-    //      * e0 = 0 0 0 0     = [                            ]  ⚠︎ This is initialized automatically by the `init` method.
-    //      * e1 = a1 a2 a3 a4 = [ (0 , 0b1111)               ]
-    //      * e2 = a1 a2 b3 b4 = [ (0 , 0b1100) ; (1, 0b0011) ]
-    //      * e3 = d1 d2 d3 0  = [ (2 , 0b1110) ]
+    //      * e0 = 0 0 0 0     = [                                          ]  ⚠︎ This is initialized automatically by the `init` method.
+    //      * e1 = a1 a2 a3 a4 = [ (0 , 0b1111, false)                      ]
+    //      * e2 = a1 a2 b3 b4 = [ (0 , 0b1100, false) ; (1, 0b0011. false) ]
+    //      * e3 = d1 d2 d3 0  = [ (2 , 0b1110, false)                      ]
     // - selection lines (# = 4):
     //      * ξ_0 = [ ξ(0-1) = 0b1100  ; ξ(2-3) = 0b0011                                ] value = ξ(0,1) = 0b1100
     //      * ξ_1 = [ ξ(0-2) = 0b1110  ; ξ(3)   = 0b0001                                ] value = ξ(3) = 0b0001
@@ -314,6 +336,68 @@ test "srcValue_2" {
     // - value (e3) = 0b1000
     const e3_val = try sw.srcValue(3);
     try expectEqual(0b1000, e3_val);
+}
+
+test "srcValue3" {
+    // - Number type = u4
+    // - Attached (dummy) devices (#3):
+    //      * A  : data = 0b1110
+    //      * B  : data = 0b1000
+    //      * AD : data = 0b0010
+    // - virtual sources (# = 3):
+    //      * e0 =   0   0  0    0   = [                                         ]
+    //      * e1 = ~(a0) d0 d1   d2  = [ (0, 0b1000, true)  ; (2, 0b1110, false) ]
+    //      * e2 =   b1  b2 b3 ~(a0) = [ (1, 0b0111, false) ; (0, 0b1000, true ) ]
+    // - selection lines (# = 3):
+    //      * ξ_0 = [ ξ_0(0-3) = 0b1111 ]
+    //      * ξ_1 = [ ξ_1(0-3) = 0b1111 ]
+    //      * ξ_2 = [ ξ_2(0-3) = 0b1111 ]
+    // Selection lines are assumed to be activated!
+    //
+    // The produced values should be:
+    // - value (e1) = 0b0001
+    // - value (e2) = 0b0000
+
+    var sw = try SwitchCircuit(u4, 3, 3).init(@constCast("KA"));
+    defer sw.deinit(debug_allocator) catch unreachable;
+
+    sw.devices[0] = Device(u4){
+        ._name = @constCast(&[2]u8{ 'A', ' ' }),
+        ._data = @constCast(&@as(u4, 0b1110)),
+    };
+    sw.devices[1] = Device(u4){
+        ._name = @constCast(&[2]u8{ 'B', ' ' }),
+        ._data = @constCast(&@as(u4, 0b1000)),
+    };
+    sw.devices[2] = Device(u4){
+        ._name = @constCast(&[2]u8{ 'A', 'D' }),
+        ._data = @constCast(&@as(u4, 0b0010)),
+    };
+
+    //      * ξ_0 = [ ξ_0(0-3) ]
+    try sw.select_lines[0].addGroup(debug_allocator, 0b1111);
+
+    //      * e1 = ~(a0) d0 d1   d2  = [ (0, 0b1000, true)  ; (2, 0b1110, false) ]
+    //      * ξ_1 = [ ξ_1(0-3) = 0b1111 ]
+    try sw.virtual_sources[1].append(debug_allocator, .{ .idx = 0, .mask = 0b1000, .negated = true });
+    try sw.virtual_sources[1].append(debug_allocator, .{ .idx = 2, .mask = 0b1110, .negated = false });
+    try sw.select_lines[1].addGroup(debug_allocator, 0b1111);
+    try sw.select_lines[1].setGroup(0);
+
+    //      * e2 =   b1  b2 b3 ~(a0) = [ (1, 0b0111, false) ; (0, 0b1000, true ) ]
+    //      * ξ_2 = [ ξ_2(0-3) = 0b1111 ]
+    try sw.virtual_sources[2].append(debug_allocator, .{ .idx = 1, .mask = 0b0111, .negated = false });
+    try sw.virtual_sources[2].append(debug_allocator, .{ .idx = 0, .mask = 0b1000, .negated = true });
+
+    // Try to retrieve e1 = ~(a0) d0 d1 d2  line = 0b1111
+    // It should return value: 0b0001
+    const e1_val = try sw.srcValue(1);
+    try expectEqual(0b0001, e1_val);
+
+    // Try to retrieve e2 = b1  b2 b3 ~(a0) line = 0b1111
+    // It should return value: 0b0000
+    const e2_val = try sw.srcValue(2);
+    try expectEqual(0b0000, e2_val);
 }
 
 test "computeOutput" {

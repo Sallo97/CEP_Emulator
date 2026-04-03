@@ -66,6 +66,34 @@ pub fn MaskUtils(SizeT: type) type {
             const result = copied | kept;
             return result;
         }
+
+        /// Returns the number of bits set to one in `mask`.
+        pub fn bitsSet(mask: SizeT) isize {
+            var count: isize = 0;
+            for (0..bits_length) |offset| {
+                const bit: u1 = @truncate(mask >> @intCast(offset));
+                if (bit == 1) count += 1;
+            }
+            return count;
+        }
+
+        /// Returns the position of the first bit set to one in `mask`.
+        /// We assume position 0 is the most significant bit.
+        /// If no bit set to one is found, it returns the special value `null`.
+        pub fn fstSetPos(mask: SizeT) ?isize {
+            var pos: isize = 0;
+            var flag: bool = false;
+            for (1..bits_length + 1) |offset| {
+                const bit: u1 = @truncate(mask >> @intCast(bits_length - offset));
+                if (bit == 1) {
+                    flag = true;
+                    break;
+                } else pos += 1;
+            }
+            if (flag) {
+                return pos;
+            } else return null;
+        }
     };
 }
 
@@ -143,4 +171,50 @@ test "copyContent" {
     // The result should be = 0b10011
     const example3 = MaskUtilitiesFive.copyContent(0b01011, 0b10111, 0b11001);
     expectEqual(0b10011, example3) catch unreachable;
+}
+
+test "bitSet" {
+    // SizeT = u6
+    // mask = 0b110101
+    // result = 4
+    const example1 = MaskUtils(u6).bitsSet(0b110101);
+    try expectEqual(4, example1);
+
+    // SizeT = u8
+    // mask = 0b00000000
+    // result = 0
+    const example2 = MaskUtils(u8).bitsSet(0b00000000);
+    try expectEqual(0, example2);
+
+    // SizeT = u4
+    // mask = 0b1111
+    // result = 4
+    const example3 = MaskUtils(u4).bitsSet(0b1111);
+    try expectEqual(4, example3);
+}
+
+test "fstSetPos" {
+    // SizeT = u6
+    // mask = 0b010010
+    // result = 1
+    const example1 = MaskUtils(u6).fstSetPos(0b010010);
+    try expectEqual(1, example1);
+
+    // SizeT = u8
+    // mask = 0b00000001
+    // result = 7
+    const example2 = MaskUtils(u8).fstSetPos(0b00000001);
+    try expectEqual(7, example2);
+
+    // SizeT = u1
+    // mask = 0b1
+    // result = 0
+    const example3 = MaskUtils(u1).fstSetPos(0b1);
+    try expectEqual(0, example3);
+
+    // SizeT = u10
+    // mask = 0b0000000000
+    // result = null
+    const example4 = MaskUtils(u10).fstSetPos(0b0000000000);
+    try expectEqual(null, example4);
 }
