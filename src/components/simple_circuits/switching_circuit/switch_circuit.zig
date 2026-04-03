@@ -340,25 +340,29 @@ test "srcValue_2" {
 
 test "srcValue3" {
     // - Number type = u4
-    // - Attached (dummy) devices (#3):
+    // - Attached (dummy) devices (#4):
     //      * A  : data = 0b1110
     //      * B  : data = 0b1000
     //      * AD : data = 0b0010
-    // - virtual sources (# = 3):
-    //      * e0 =   0   0  0    0   = [                                         ]
-    //      * e1 = ~(a0) d0 d1   d2  = [ (0, 0b1000, true)  ; (2, 0b1110, false) ]
-    //      * e2 =   b1  b2 b3 ~(a0) = [ (1, 0b0111, false) ; (0, 0b1000, true ) ]
+    //      * 1  : data = 0b1111 <-  special dummy constant device to force the retrieval of constant one.
+    // - virtual sources (# = 4):
+    //      * e0 =   0   0  0    0   = [                                                              ]
+    //      * e1 = ~(a0) d0 d1   d2  = [ (0, 0b1000, true)  ; (2, 0b1110, false)                      ]
+    //      * e2 =   b1  b2 b3 ~(a0) = [ (1, 0b0111, false) ; (0, 0b1000, true )                      ]
+    //      * e3 =   a0  1  a2   a3  = [ (0, 0b1000, false) ; (3, 0b0100, false) ; (0, 0b0011, false) ]
     // - selection lines (# = 3):
     //      * ξ_0 = [ ξ_0(0-3) = 0b1111 ]
     //      * ξ_1 = [ ξ_1(0-3) = 0b1111 ]
     //      * ξ_2 = [ ξ_2(0-3) = 0b1111 ]
+    //      * ξ_3 = [ ξ_3(0-3) = 0b1111 ]
     // Selection lines are assumed to be activated!
     //
     // The produced values should be:
     // - value (e1) = 0b0001
     // - value (e2) = 0b0000
+    // - value (e3) = 0b1110
 
-    var sw = try SwitchCircuit(u4, 3, 3).init(@constCast("KA"));
+    var sw = try SwitchCircuit(u4, 4, 3).init(@constCast("KA"));
     defer sw.deinit(debug_allocator) catch unreachable;
 
     sw.devices[0] = Device(u4){
@@ -372,6 +376,10 @@ test "srcValue3" {
     sw.devices[2] = Device(u4){
         ._name = @constCast(&[2]u8{ 'A', 'D' }),
         ._data = @constCast(&@as(u4, 0b0010)),
+    };
+    sw.devices[3] = Device(u4){
+        ._name = @constCast(&[2]u8{ '1', ' ' }),
+        ._data = @constCast(&@as(u4, 0b1111)),
     };
 
     //      * ξ_0 = [ ξ_0(0-3) ]
@@ -388,6 +396,16 @@ test "srcValue3" {
     //      * ξ_2 = [ ξ_2(0-3) = 0b1111 ]
     try sw.virtual_sources[2].append(debug_allocator, .{ .idx = 1, .mask = 0b0111, .negated = false });
     try sw.virtual_sources[2].append(debug_allocator, .{ .idx = 0, .mask = 0b1000, .negated = true });
+    try sw.select_lines[2].addGroup(debug_allocator, 0b1111);
+    try sw.select_lines[2].setGroup(0);
+
+    //      * e3 =   a0  1  a2   a3  = [ (0, 0b1000, false) ; (3, 0b0100, false) ; (0, 0b0011, false) ]
+    //      * ξ_3 = [ ξ_3(0-3) = 0b1111 ]
+    try sw.virtual_sources[3].append(debug_allocator, .{ .idx = 0, .mask = 0b1000, .negated = false });
+    try sw.virtual_sources[3].append(debug_allocator, .{ .idx = 3, .mask = 0b0100, .negated = false });
+    try sw.virtual_sources[3].append(debug_allocator, .{ .idx = 0, .mask = 0b0011, .negated = false });
+    try sw.select_lines[3].addGroup(debug_allocator, 0b1111);
+    try sw.select_lines[3].setGroup(0);
 
     // Try to retrieve e1 = ~(a0) d0 d1 d2  line = 0b1111
     // It should return value: 0b0001
@@ -398,6 +416,11 @@ test "srcValue3" {
     // It should return value: 0b0000
     const e2_val = try sw.srcValue(2);
     try expectEqual(0b0000, e2_val);
+
+    // Try to retrieve e3 = a0 1 a2 a3  line = 0b1111
+    // It should return value: 0b1110
+    const e3_val = try sw.srcValue(3);
+    try expectEqual(0b1110, e3_val);
 }
 
 test "computeOutput" {
